@@ -1,11 +1,9 @@
 #include "nbsp_prompt.h"
 
-#include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "nbsp_cache.h"
 #include "nbsp_git.h"
@@ -15,13 +13,8 @@
 #define PATH_MAX 4096
 #endif
 
-static bool env_bool(const char *name, bool fallback) {
-    const char *value = getenv(name);
-    if (!value || !*value) {
-        return fallback;
-    }
-    return strcmp(value, "0") != 0 && strcmp(value, "false") != 0 && strcmp(value, "no") != 0;
-}
+#define NBSP_DURATION_THRESHOLD_MS 2000U
+#define NBSP_GIT_TIMEOUT_MS 1500U
 
 static unsigned env_unsigned(const char *name, unsigned fallback, unsigned min, unsigned max) {
     const char *value = getenv(name);
@@ -32,50 +25,61 @@ static unsigned env_unsigned(const char *name, unsigned fallback, unsigned min, 
     return (unsigned) parsed;
 }
 
-bool nbsp_color_valid(const char *color) {
-    static const char *const names[] = {
-        "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white", "default", "none"
-    };
-    if (!color || !*color) {
+unsigned nbsp_git_timeout_from_env(void) {
+    return env_unsigned("NBSP_GIT_TIMEOUT_MS", NBSP_GIT_TIMEOUT_MS, 50U, 60000U);
+}
+
+bool nbsp_prompt_data_collect(const char *cwd,
+    int last_status,
+    unsigned long duration_ms,
+    unsigned jobs,
+    struct nbsp_prompt_data *data) {
+    if (!cwd || !data) {
         return false;
     }
-    for (size_t i = 0; i < sizeof names / sizeof names[0]; ++i) {
-        if (strcmp(color, names[i]) == 0) {
-            return true;
+
+    memset(data, 0, sizeof *data);
+    int cwd_count = snprintf(data->cwd, sizeof data->cwd, "%s", cwd);
+    if (cwd_count < 0 || (size_t) cwd_count >= sizeof data->cwd ||
+        !nbsp_path_abbreviate_into(cwd, data->path, sizeof data->path)) {
+        return false;
+    }
+    data->status = last_status;
+    data->duration_ms = duration_ms;
+    data->jobs = jobs;
+
+    struct nbsp_repo repo;
+    if (nbsp_git_discover(cwd, &repo)) {
+        data->git_present = true;
+        struct nbsp_git_status cached;
+        if (nbsp_cache_load(repo.root, &cached)) {
+            data->git_valid = true;
+            data->git_updated_ms = cached.updated_ms;
+            data->git_staged = cached.staged;
+            data->git_modified = cached.modified;
+            data->git_untracked = cached.untracked;
+            data->git_conflicted = cached.conflicted;
+            data->git_ahead = cached.ahead;
+            data->git_behind = cached.behind;
+            data->git_stashes = cached.stashes;
+        } else {
+            memset(&cached, 0, sizeof cached);
         }
+        if (!nbsp_git_read_branch(&repo, data->git_branch, sizeof data->git_branch) &&
+            cached.branch[0] != '\0') {
+            (void) snprintf(data->git_branch, sizeof data->git_branch, "%s", cached.branch);
+        }
+        nbsp_repo_free(&repo);
     }
-    long number = 0;
-    return nbsp_parse_long(color, 0, 255, &number);
+
+    (void) nbsp_nvm_version_into(
+        getenv("NVM_BIN"),
+        data->node_version,
+        sizeof data->node_version);
+    return true;
 }
 
-static const char *env_color(const char *name, const char *fallback) {
-    const char *value = getenv(name);
-    return nbsp_color_valid(value) ? value : fallback;
-}
-
-void nbsp_config_from_env(struct nbsp_config *config) {
-    if (!config) {
-        return;
-    }
-    config->color_path = env_color("NBSP_COLOR_PATH", "default");
-    config->color_git = env_color("NBSP_COLOR_GIT", "default");
-    config->color_node = env_color("NBSP_COLOR_NODE", "green");
-    config->color_meta = env_color("NBSP_COLOR_META", "yellow");
-    config->color_ok = env_color("NBSP_COLOR_OK", "none");
-    config->color_error = env_color("NBSP_COLOR_ERROR", "red");
-    const char *prompt_char = getenv("NBSP_PROMPT_CHAR");
-    config->prompt_char = prompt_char && *prompt_char ? prompt_char : "%#";
-    config->duration_threshold_ms = env_unsigned("NBSP_DURATION_THRESHOLD_MS", 2000U, 0U, UINT_MAX);
-    config->git_timeout_ms = env_unsigned("NBSP_GIT_TIMEOUT_MS", 1500U, 50U, 60000U);
-    config->show_git = env_bool("NBSP_SHOW_GIT", true);
-    config->show_nvm = env_bool("NBSP_SHOW_NVM", true);
-    config->show_jobs = env_bool("NBSP_SHOW_JOBS", true);
-}
-
-static bool append_colored(struct nbsp_buf *buf, const char *color, const char *text) {
-    if (strcmp(color, "none") != 0 && !nbsp_buf_appendf(buf, "%%F{%s}", color)) {
-        return false;
-    }
+static bool append_escaped(struct nbsp_buf *buf, const char *text) {
     for (const unsigned char *p = (const unsigned char *) text; *p; ++p) {
         if (*p == '%') {
             if (!nbsp_buf_append(buf, "%%")) return false;
@@ -85,49 +89,35 @@ static bool append_colored(struct nbsp_buf *buf, const char *color, const char *
             return false;
         }
     }
-    return strcmp(color, "none") == 0 || nbsp_buf_append(buf, "%f");
+    return true;
 }
 
-static bool append_prompt_character(struct nbsp_buf *buf, const char *color, const char *text) {
-    if (strcmp(text, "%#") != 0) return append_colored(buf, color, text);
-    bool colored = strcmp(color, "none") != 0;
-    return (!colored || nbsp_buf_appendf(buf, "%%F{%s}", color)) &&
-        nbsp_buf_append(buf, "%#") &&
-        (!colored || nbsp_buf_append(buf, "%f"));
+static bool append_colored(struct nbsp_buf *buf, const char *color, const char *text) {
+    return nbsp_buf_appendf(buf, "%%F{%s}", color) &&
+        append_escaped(buf, text) &&
+        nbsp_buf_append(buf, "%f");
 }
 
-static bool append_git(struct nbsp_buf *buf,
-    const char *branch,
-    const struct nbsp_git_status *status,
-    const char *color) {
-    bool colored = strcmp(color, "none") != 0;
-    bool ok = !colored || nbsp_buf_appendf(buf, "%%F{%s}", color);
-    if (ok) ok = nbsp_buf_append_char(buf, '[');
-    if (ok) {
-        for (const unsigned char *p = (const unsigned char *) branch; *p; ++p) {
-            if (*p == '%') ok = nbsp_buf_append(buf, "%%");
-            else if (*p < 32U || *p == 127U) ok = nbsp_buf_append_char(buf, '?');
-            else ok = nbsp_buf_append_char(buf, (char) *p);
-            if (!ok) break;
-        }
+static bool append_git(struct nbsp_buf *buf, const struct nbsp_prompt_data *data) {
+    if (!nbsp_buf_append(buf, "%F{default}[")) {
+        return false;
     }
-    if (ok && status->valid) {
-        if (status->staged) ok = nbsp_buf_appendf(buf, " +%u", status->staged);
-        if (ok && status->modified) ok = nbsp_buf_appendf(buf, " ~%u", status->modified);
-        if (ok && status->untracked) ok = nbsp_buf_appendf(buf, " ?%u", status->untracked);
-        if (ok && status->conflicted) ok = nbsp_buf_appendf(buf, " !%u", status->conflicted);
-        if (ok && status->ahead) ok = nbsp_buf_appendf(buf, " ^%u", status->ahead);
-        if (ok && status->behind) ok = nbsp_buf_appendf(buf, " v%u", status->behind);
-        if (ok && status->stashes) ok = nbsp_buf_appendf(buf, " *%u", status->stashes);
+    bool ok = append_escaped(buf, data->git_branch);
+    if (ok && data->git_valid) {
+        if (data->git_staged) ok = nbsp_buf_appendf(buf, " +%u", data->git_staged);
+        if (ok && data->git_modified) ok = nbsp_buf_appendf(buf, " ~%u", data->git_modified);
+        if (ok && data->git_untracked) ok = nbsp_buf_appendf(buf, " ?%u", data->git_untracked);
+        if (ok && data->git_conflicted) ok = nbsp_buf_appendf(buf, " !%u", data->git_conflicted);
+        if (ok && data->git_ahead) ok = nbsp_buf_appendf(buf, " ^%u", data->git_ahead);
+        if (ok && data->git_behind) ok = nbsp_buf_appendf(buf, " v%u", data->git_behind);
+        if (ok && data->git_stashes) ok = nbsp_buf_appendf(buf, " *%u", data->git_stashes);
     } else if (ok) {
         ok = nbsp_buf_append(buf, " ...");
     }
-    if (ok) ok = nbsp_buf_append_char(buf, ']');
-    if (ok && colored) ok = nbsp_buf_append(buf, "%f");
-    return ok;
+    return ok && nbsp_buf_append(buf, "]%f");
 }
 
-static bool append_duration(struct nbsp_buf *buf, unsigned long duration_ms, const char *color) {
+static bool append_duration(struct nbsp_buf *buf, unsigned long duration_ms) {
     char text[64];
     if (duration_ms < 1000UL) {
         (void) snprintf(text, sizeof text, "[%lums]", duration_ms);
@@ -136,112 +126,55 @@ static bool append_duration(struct nbsp_buf *buf, unsigned long duration_ms, con
         (void) snprintf(text, sizeof text, "[%lu.%lus]", tenths / 10UL, tenths % 10UL);
     } else {
         unsigned long total_seconds = duration_ms / 1000UL;
-        (void) snprintf(text, sizeof text, "[%lum%02lus]", total_seconds / 60UL, total_seconds % 60UL);
+        (void) snprintf(text, sizeof text, "[%lum%02lus]",
+            total_seconds / 60UL,
+            total_seconds % 60UL);
     }
-    return append_colored(buf, color, text);
+    return append_colored(buf, "yellow", text);
 }
 
-static bool append_failure_prompt(struct nbsp_buf *buf,
-    int status,
-    const char *color,
-    const char *prompt_char) {
-    bool colored = strcmp(color, "none") != 0;
-    if (colored && !nbsp_buf_appendf(buf, "%%F{%s}", color)) return false;
-    if (!nbsp_buf_appendf(buf, "e%d", status)) return false;
-    if (strcmp(prompt_char, "%#") == 0) {
-        if (!nbsp_buf_append(buf, "%#")) return false;
-    } else {
-        for (const unsigned char *p = (const unsigned char *) prompt_char; *p; ++p) {
-            if (*p == '%') {
-                if (!nbsp_buf_append(buf, "%%")) return false;
-            } else if (*p < 32U || *p == 127U) {
-                if (!nbsp_buf_append_char(buf, '?')) return false;
-            } else if (!nbsp_buf_append_char(buf, (char) *p)) {
-                return false;
-            }
-        }
+static bool append_prompt_character(struct nbsp_buf *buf, int status) {
+    if (status == 0) {
+        return nbsp_buf_append(buf, "%#");
     }
-    return !colored || nbsp_buf_append(buf, "%f");
+    return nbsp_buf_appendf(buf, "%%F{red}e%d%%#%%f", status);
 }
 
 char *nbsp_prompt_render(const char *cwd,
     int last_status,
     unsigned long duration_ms,
-    unsigned jobs,
-    const struct nbsp_config *config) {
-    if (!cwd || !config) {
+    unsigned jobs) {
+    struct nbsp_prompt_data data;
+    if (!nbsp_prompt_data_collect(cwd, last_status, duration_ms, jobs, &data)) {
         return NULL;
     }
+
     struct nbsp_buf prompt;
     nbsp_buf_init(&prompt);
+    bool ok = append_colored(&prompt, "default", data.path);
 
-    char path[NBSP_PATH_CAP];
-    if (!nbsp_path_abbreviate_into(cwd, path, sizeof path) ||
-        !append_colored(&prompt, config->color_path, path)) {
-        nbsp_buf_free(&prompt);
-        return NULL;
+    if (ok && data.git_present && data.git_branch[0] != '\0') {
+        ok = nbsp_buf_append_char(&prompt, ' ') && append_git(&prompt, &data);
     }
-
-    if (config->show_git) {
-        struct nbsp_repo repo;
-        if (nbsp_git_discover(cwd, &repo)) {
-            char branch[256] = {0};
-            struct nbsp_git_status git_status;
-            (void) nbsp_cache_load(repo.root, &git_status);
-            if (!nbsp_git_read_branch(&repo, branch, sizeof branch) && git_status.branch[0]) {
-                (void) snprintf(branch, sizeof branch, "%s", git_status.branch);
-            }
-            if (branch[0]) {
-                if (!nbsp_buf_append_char(&prompt, ' ') ||
-                    !append_git(&prompt, branch, &git_status, config->color_git)) {
-                    nbsp_repo_free(&repo);
-                    nbsp_buf_free(&prompt);
-                    return NULL;
-                }
-            }
-            nbsp_repo_free(&repo);
-        }
+    if (ok && data.node_version[0] != '\0') {
+        char text[320];
+        (void) snprintf(text, sizeof text, "[node:%s]", data.node_version);
+        ok = nbsp_buf_append_char(&prompt, ' ') && append_colored(&prompt, "green", text);
     }
-
-    if (config->show_nvm) {
-        char version[256];
-        if (nbsp_nvm_version_into(getenv("NVM_BIN"), version, sizeof version)) {
-            char text[320];
-            (void) snprintf(text, sizeof text, "[node:%s]", version);
-            if (!nbsp_buf_append_char(&prompt, ' ') ||
-                !append_colored(&prompt, config->color_node, text)) {
-                nbsp_buf_free(&prompt);
-                return NULL;
-            }
-        }
+    if (ok && data.duration_ms >= NBSP_DURATION_THRESHOLD_MS) {
+        ok = nbsp_buf_append_char(&prompt, ' ') && append_duration(&prompt, data.duration_ms);
     }
-
-    if (duration_ms >= (unsigned long) config->duration_threshold_ms) {
-        if (!nbsp_buf_append_char(&prompt, ' ') ||
-            !append_duration(&prompt, duration_ms, config->color_meta)) {
-            nbsp_buf_free(&prompt);
-            return NULL;
-        }
-    }
-
-    if (config->show_jobs && jobs > 0U) {
+    if (ok && data.jobs > 0U) {
         char text[64];
-        (void) snprintf(text, sizeof text, "[jobs:%u]", jobs);
-        if (!nbsp_buf_append_char(&prompt, ' ') ||
-            !append_colored(&prompt, config->color_meta, text)) {
-            nbsp_buf_free(&prompt);
-            return NULL;
-        }
+        (void) snprintf(text, sizeof text, "[jobs:%u]", data.jobs);
+        ok = nbsp_buf_append_char(&prompt, ' ') && append_colored(&prompt, "yellow", text);
     }
-
-    if (!nbsp_buf_append_char(&prompt, ' ') ||
-        !(last_status == 0
-            ? append_prompt_character(&prompt, config->color_ok, config->prompt_char)
-            : append_failure_prompt(&prompt,
-                last_status,
-                config->color_error,
-                config->prompt_char)) ||
-        !nbsp_buf_append_char(&prompt, ' ')) {
+    if (ok) {
+        ok = nbsp_buf_append_char(&prompt, ' ') &&
+            append_prompt_character(&prompt, data.status) &&
+            nbsp_buf_append_char(&prompt, ' ');
+    }
+    if (!ok) {
         nbsp_buf_free(&prompt);
         return NULL;
     }

@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "nbsp_cache.h"
+#include "nbsp_data.h"
 #include "nbsp_prompt.h"
 #include "nbsp_util.h"
 #include "nbsp_zsh.h"
@@ -23,8 +24,10 @@
 static void print_usage(FILE *out) {
     fputs(
         "Usage:\n"
-        "  nbsp init zsh\n"
+        "  nbsp init zsh [--detached]\n"
         "  nbsp prompt [--status N] [--duration-ms N] [--jobs N]\n"
+        "  nbsp data [--status N] [--duration-ms N] [--jobs N]"
+            " [--format lines|nul]\n"
         "  nbsp refresh [--cwd PATH] [--notify] [--force]\n"
         "  nbsp cache clear\n"
         "  nbsp --help\n"
@@ -38,7 +41,8 @@ static void print_help(void) {
         "\n"
         "nbsp is a small, asynchronous prompt for macOS and Zsh.\n"
         "Run 'eval \"$(nbsp init zsh)\"' from .zshrc to install its hooks.\n"
-        "The prompt command never starts Git; refresh is the background worker.\n",
+        "Use 'nbsp init zsh --detached' to build a prompt from NBSP_DATA.\n"
+        "The prompt and data commands never start Git; refresh is the background worker.\n",
         stdout);
 }
 
@@ -82,9 +86,7 @@ static int command_prompt(int argc, char **argv) {
     if (!getcwd(cwd, sizeof cwd)) {
         (void) snprintf(cwd, sizeof cwd, "?");
     }
-    struct nbsp_config config;
-    nbsp_config_from_env(&config);
-    char *prompt = nbsp_prompt_render(cwd, last_status, duration_ms, jobs, &config);
+    char *prompt = nbsp_prompt_render(cwd, last_status, duration_ms, jobs);
     if (!prompt) {
         fputs("> ", stdout);
         return 0;
@@ -92,6 +94,64 @@ static int command_prompt(int argc, char **argv) {
     fputs(prompt, stdout);
     free(prompt);
     return 0;
+}
+
+static int command_data(int argc, char **argv) {
+    int last_status = 0;
+    unsigned long duration_ms = 0UL;
+    unsigned jobs = 0U;
+    enum nbsp_data_format format = NBSP_DATA_LINES;
+    enum { OPT_STATUS = 1, OPT_DURATION, OPT_JOBS, OPT_FORMAT };
+    static const struct option options[] = {
+        {"status", required_argument, NULL, OPT_STATUS},
+        {"duration-ms", required_argument, NULL, OPT_DURATION},
+        {"jobs", required_argument, NULL, OPT_JOBS},
+        {"format", required_argument, NULL, OPT_FORMAT},
+        {0, 0, 0, 0}
+    };
+    optind = 1;
+    int option = 0;
+    while ((option = getopt_long(argc, argv, "", options, NULL)) != -1) {
+        long parsed = 0;
+        switch (option) {
+            case OPT_STATUS:
+                if (!nbsp_parse_long(optarg, 0, 255, &parsed)) return 2;
+                last_status = (int) parsed;
+                break;
+            case OPT_DURATION:
+                if (!nbsp_parse_long(optarg, 0, LONG_MAX, &parsed)) return 2;
+                duration_ms = (unsigned long) parsed;
+                break;
+            case OPT_JOBS:
+                if (!nbsp_parse_long(optarg, 0, INT_MAX, &parsed)) return 2;
+                jobs = (unsigned) parsed;
+                break;
+            case OPT_FORMAT:
+                if (strcmp(optarg, "lines") == 0) {
+                    format = NBSP_DATA_LINES;
+                } else if (strcmp(optarg, "nul") == 0) {
+                    format = NBSP_DATA_NUL;
+                } else {
+                    return 2;
+                }
+                break;
+            default:
+                return 2;
+        }
+    }
+    if (optind != argc) {
+        return 2;
+    }
+
+    char cwd[PATH_MAX];
+    if (!getcwd(cwd, sizeof cwd)) {
+        (void) snprintf(cwd, sizeof cwd, "?");
+    }
+    struct nbsp_prompt_data data;
+    if (!nbsp_prompt_data_collect(cwd, last_status, duration_ms, jobs, &data)) {
+        return 1;
+    }
+    return nbsp_data_write(stdout, &data, format) ? 0 : 1;
 }
 
 static int command_refresh(int argc, char **argv) {
@@ -130,9 +190,7 @@ static int command_refresh(int argc, char **argv) {
         }
         cwd_arg = cwd;
     }
-    struct nbsp_config config;
-    nbsp_config_from_env(&config);
-    return nbsp_refresh(cwd_arg, config.git_timeout_ms, notify, force);
+    return nbsp_refresh(cwd_arg, nbsp_git_timeout_from_env(), notify, force);
 }
 
 int main(int argc, char **argv) {
@@ -149,15 +207,23 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (strcmp(argv[1], "init") == 0) {
-        if (argc != 3 || strcmp(argv[2], "zsh") != 0) {
+        bool detached = argc == 4 && strcmp(argv[3], "--detached") == 0;
+        if ((argc != 3 && !detached) || strcmp(argv[2], "zsh") != 0) {
             print_usage(stderr);
             return 2;
         }
+        fputs(detached
+            ? "typeset -g _NBSP_INIT_MODE=detached\n"
+            : "typeset -g _NBSP_INIT_MODE=prompt\n",
+            stdout);
         nbsp_print_zsh_init(stdout);
         return 0;
     }
     if (strcmp(argv[1], "prompt") == 0) {
         return command_prompt(argc - 1, argv + 1);
+    }
+    if (strcmp(argv[1], "data") == 0) {
+        return command_data(argc - 1, argv + 1);
     }
     if (strcmp(argv[1], "refresh") == 0) {
         return command_refresh(argc - 1, argv + 1);

@@ -39,8 +39,9 @@ make test
 make install
 ```
 
-This installs `nbsp` to `~/.local/bin` and its man page to
-`~/.local/share/man/man1`. To use another prefix, run for example
+This installs `nbsp` to `~/.local/bin`, its man page to
+`~/.local/share/man/man1`, and the custom prompt guide under
+`~/.local/share/doc/nobsprompt`. To use another prefix, run for example
 `make install PREFIX=/opt/homebrew`.
 
 Add these lines to `~/.zshrc`, after NVM initialization:
@@ -53,41 +54,44 @@ eval "$(nbsp init zsh)"
 Restart Zsh with `exec zsh`, or open a new terminal. If `~/.local/bin` is
 already on `PATH`, omit the first line.
 
-## Configuration
+## Two modes
 
-Set overrides before `nbsp init zsh`. The integration applies and exports the
-defaults for the C renderer.
+The normal mode is deliberately fixed:
 
 ```zsh
-NBSP_COLOR_PATH=default
-NBSP_COLOR_GIT=default
-NBSP_COLOR_NODE=green
-NBSP_COLOR_META=yellow
-NBSP_COLOR_OK=none
-NBSP_COLOR_ERROR=red
-NBSP_PROMPT_CHAR='%#'
-NBSP_DURATION_THRESHOLD_MS=2000
-NBSP_GIT_TIMEOUT_MS=1500
-NBSP_SHOW_GIT=1
-NBSP_SHOW_NVM=1
-NBSP_SHOW_JOBS=1
-
 eval "$(nbsp init zsh)"
 ```
 
-Colors are basic Zsh color names, `default`, `none`, or numbers from 0 through
-255. Path and Git use `default` so they exactly match the terminal's normal
-foreground instead of relying on a palette's interpretation of white. The
-default success character uses Zsh's native `%#` expansion: `%` for a regular
-shell and `#` for a privileged shell. Set `NBSP_PROMPT_CHAR='$'` to override it
-with a dollar prompt. There is no
-custom format language. Dynamic paths and branch names are sanitized before
-Zsh prompt expansion.
+It always shows the abbreviated path and Git when available, active NVM
+version, commands lasting at least two seconds, nonzero job count, and exact
+failure status. Its colors, segment visibility, threshold, and `%#` prompt
+character are not configurable.
+
+Detached mode keeps the same fast data collection, asynchronous Git refresh,
+command timing, jobs, redraw lifecycle, and external editing, but never reads
+or writes `PROMPT` or `RPROMPT`:
+
+```zsh
+eval "$(nbsp init zsh --detached)"
+```
+
+It publishes raw facts in the `NBSP_DATA` associative array. Build any prompt
+you want from those values, or consume the same backend directly with
+`nbsp data`. See the complete [custom prompt guide](doc/custom-prompts.md) for
+the schema, safety rules, lifecycle details, and copy-paste examples including
+minimal, two-line, right-side, Nerd Font, callback-driven, and OSC-wrapped
+prompts.
+
+## Operational configuration
 
 Cache files live in `$NBSP_CACHE_DIR`, `$XDG_CACHE_HOME/nbsp`, or
 `~/Library/Caches/nbsp`, in that order. `nbsp cache clear` removes them. `nbsp`
 does not change repository Git configuration; users with very large worktrees
 may independently enable Git's untracked cache or built-in FSMonitor.
+
+`NBSP_GIT_TIMEOUT_MS` controls background Git timeout and defaults to 1500 ms.
+These two operational settings apply to both modes. There are no presentation
+environment variables; use detached mode for presentation changes.
 
 `nbsp refresh --force` skips only the 250 ms duplicate-refresh debounce. The
 Zsh integration uses it when a refresh that started before a foreground
@@ -108,7 +112,7 @@ example:
 
 ```zsh
 export EDITOR='nvim'
-eval "$(nbsp init zsh)"
+eval "$(nbsp init zsh)" # or: eval "$(nbsp init zsh --detached)"
 ```
 
 The integration installs `Alt+E` in the Emacs, Vi insert, and Vi command
@@ -123,6 +127,7 @@ a release build:
 
 ```sh
 zsh bench/benchmark.zsh ./build/nbsp
+zsh bench/benchmark.zsh ./build/nbsp data
 ```
 
 The project target is a warm p95 below 5 ms on the development Mac. Background

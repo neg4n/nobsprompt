@@ -1,22 +1,12 @@
 if [[ -z ${_NBSP_INITIALIZED-} ]]; then
   typeset -g _NBSP_INITIALIZED=1
+  typeset -g _nbsp_mode=${_NBSP_INIT_MODE:-prompt}
   autoload -Uz add-zsh-hook edit-command-line
   zmodload zsh/datetime
   zmodload zsh/parameter
   zmodload zsh/system 2>/dev/null
 
-  typeset -gx NBSP_COLOR_PATH=${NBSP_COLOR_PATH:-default}
-  typeset -gx NBSP_COLOR_GIT=${NBSP_COLOR_GIT:-default}
-  typeset -gx NBSP_COLOR_NODE=${NBSP_COLOR_NODE:-green}
-  typeset -gx NBSP_COLOR_META=${NBSP_COLOR_META:-yellow}
-  typeset -gx NBSP_COLOR_OK=${NBSP_COLOR_OK:-none}
-  typeset -gx NBSP_COLOR_ERROR=${NBSP_COLOR_ERROR:-red}
-  typeset -gx NBSP_PROMPT_CHAR=${NBSP_PROMPT_CHAR:-%#}
-  typeset -gx NBSP_DURATION_THRESHOLD_MS=${NBSP_DURATION_THRESHOLD_MS:-2000}
   typeset -gx NBSP_GIT_TIMEOUT_MS=${NBSP_GIT_TIMEOUT_MS:-1500}
-  typeset -gx NBSP_SHOW_GIT=${NBSP_SHOW_GIT:-1}
-  typeset -gx NBSP_SHOW_NVM=${NBSP_SHOW_NVM:-1}
-  typeset -gx NBSP_SHOW_JOBS=${NBSP_SHOW_JOBS:-1}
   [[ -n ${NBSP_CACHE_DIR-} ]] && export NBSP_CACHE_DIR
 
   typeset -gF _nbsp_started_at=0
@@ -27,6 +17,16 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
   typeset -gi _nbsp_refresh_again=0
   typeset -g _nbsp_refresh_pwd=
   typeset -g _nbsp_prompt_body=
+
+  if [[ $_nbsp_mode == detached ]]; then
+    typeset -gA NBSP_DATA
+    typeset -ga nbsp_data_update_functions
+  fi
+
+  nbsp_prompt_escape() {
+    REPLY=${1//[[:cntrl:]]/?}
+    REPLY=${REPLY//\%/%%}
+  }
 
   _nbsp_render() {
     local rendered old pattern kept_prefix kept_suffix
@@ -49,6 +49,34 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
       PROMPT=$rendered
     fi
     _nbsp_prompt_body=$rendered
+  }
+
+  _nbsp_load_data() {
+    local key value callback
+    local -A next
+    local -i count=0
+    while IFS= read -r -d '' key && IFS= read -r -d '' value; do
+      case $key in
+        schema_version|cwd|path|status|duration_ms|jobs|node_version|\
+        git_present|git_valid|git_branch|git_updated_ms|git_staged|\
+        git_modified|git_untracked|git_conflicted|git_ahead|git_behind|\
+        git_stashes) ;;
+        *) return 1 ;;
+      esac
+      (( $+next[$key] )) && return 1
+      next[$key]=$value
+      (( count++ ))
+    done < <(command nbsp data \
+      --status "$_nbsp_last_status" \
+      --duration-ms "$_nbsp_last_duration_ms" \
+      --jobs "$_nbsp_last_jobs" \
+      --format nul)
+    (( count == 18 && next[schema_version] == 1 )) || return 1
+    NBSP_DATA=( "${(@kv)next}" )
+    for callback in "${nbsp_data_update_functions[@]}"; do
+      (( $+functions[$callback] )) && "$callback"
+    done
+    return 0
   }
 
   _nbsp_cancel_refresh() {
@@ -74,8 +102,12 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
       if (( refresh_again )); then
         _nbsp_schedule_refresh 1
       else
-        _nbsp_render
-        zle reset-prompt 2>/dev/null
+        if [[ $_nbsp_mode == detached ]]; then
+          _nbsp_load_data && zle reset-prompt 2>/dev/null
+        else
+          _nbsp_render
+          zle reset-prompt 2>/dev/null
+        fi
       fi
     fi
   }
@@ -84,7 +116,6 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
     local -i force=${1:-0}
     local -i raw_fd=-1
     local -a refresh_args=(refresh --cwd "$PWD" --notify)
-    [[ $NBSP_SHOW_GIT == 0 ]] && return
     if (( _nbsp_refresh_fd >= 0 )); then
       [[ $_nbsp_refresh_pwd == $PWD ]] && return
       _nbsp_cancel_refresh
@@ -118,7 +149,11 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
     fi
     _nbsp_started_at=0
     _nbsp_last_jobs=${#jobstates}
-    _nbsp_render
+    if [[ $_nbsp_mode == detached ]]; then
+      _nbsp_load_data
+    else
+      _nbsp_render
+    fi
     _nbsp_schedule_refresh
   }
 
@@ -214,3 +249,4 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
   done
   unset _nbsp_keymap
 fi
+unset _NBSP_INIT_MODE

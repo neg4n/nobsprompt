@@ -3,6 +3,9 @@
 nbsp \- a small asynchronous prompt for macOS and Zsh
 .SH SYNOPSIS
 .B nbsp init zsh
+[
+.B --detached
+]
 .br
 .B nbsp prompt
 [
@@ -16,6 +19,24 @@ nbsp \- a small asynchronous prompt for macOS and Zsh
 [
 .B --jobs
 .I N
+]
+.br
+.B nbsp data
+[
+.B --status
+.I N
+]
+[
+.B --duration-ms
+.I N
+]
+[
+.B --jobs
+.I N
+]
+[
+.B --format
+.I lines|nul
 ]
 .br
 .B nbsp refresh
@@ -38,6 +59,13 @@ directory, Git status, active NVM version, command duration, background job
 count, and the exact nonzero exit status. Failures render as a compact red
 status joined to the prompt character, such as e1% or e127%.
 .PP
+The built-in presentation is intentionally fixed. Detached mode exposes the
+same cached facts and asynchronous lifecycle for user-owned prompts without
+reading or writing
+.B PROMPT
+or
+.BR RPROMPT .
+.PP
 The foreground renderer never executes Git. It reads the branch directly from
 the repository metadata and consumes a small cached status snapshot. A
 background refresh obtains porcelain-v2 status and asks ZLE to redraw the
@@ -48,6 +76,12 @@ Add the following after NVM initialization in
 .PP
 .EX
 eval "$(nbsp init zsh)"
+.EE
+.PP
+To build a custom prompt, use:
+.PP
+.EX
+eval "$(nbsp init zsh --detached)"
 .EE
 .SH EXTERNAL COMMAND EDITING
 If it is not already bound,
@@ -71,10 +105,20 @@ without replacing existing user or plugin bindings.
 .SH COMMANDS
 .TP
 .B init zsh
-Print the Zsh integration code.
+Print the fixed-prompt Zsh integration code. With
+.BR --detached ,
+install the data lifecycle without modifying the prompt.
 .TP
 .B prompt
 Render a prompt using supplied command metadata and the current directory.
+.TP
+.B data
+Print the cache-only prompt facts. The default
+.B lines
+format is a versioned sequence of percent-encoded key=value records.
+.B --format nul
+prints alternating raw key and value records separated by NUL bytes.
+Neither format executes Git.
 .TP
 .B refresh
 Refresh the Git snapshot for a directory. This is normally asynchronous.
@@ -85,30 +129,25 @@ and atomic cache publication are unchanged.
 .TP
 .B cache clear
 Remove cache and lock files owned by nbsp.
+.SH DETACHED MODE
+Detached mode publishes a global Zsh associative array named
+.B NBSP_DATA
+after each precmd and asynchronous refresh. It also exposes
+.B nbsp_data_update_functions
+for custom redraw callbacks and
+.B nbsp_prompt_escape
+for safely embedding dynamic text in Zsh prompts.
+.PP
+The complete schema, safe parsing rules, and custom prompt examples are
+documented in
+.IR custom-prompts.md ,
+installed under the nobsprompt documentation directory.
 .SH CONFIGURATION
-Set variables before running
-.B init zsh.
-The integration exports them for the native renderer.
-.TP
-.B NBSP_COLOR_PATH, NBSP_COLOR_GIT, NBSP_COLOR_NODE, NBSP_COLOR_META
-Segment colors. Defaults: terminal foreground (default), terminal foreground
-(default), green, and yellow.
-.TP
-.B NBSP_COLOR_OK, NBSP_COLOR_ERROR
-Prompt character colors. Defaults: none and red.
-.TP
-.B NBSP_PROMPT_CHAR
-Prompt character. Default: Zsh native %# (% normally, # when privileged).
-Set it to $ to force a dollar prompt.
-.TP
-.B NBSP_DURATION_THRESHOLD_MS
-Minimum duration to display. Default: 2000.
+Presentation is not configurable in built-in mode. Use detached mode to choose
+colors, symbols, layout, segment visibility, or duration thresholds.
 .TP
 .B NBSP_GIT_TIMEOUT_MS
-Background Git timeout. Default: 1500.
-.TP
-.B NBSP_SHOW_GIT, NBSP_SHOW_NVM, NBSP_SHOW_JOBS
-Set any of these to 0 to hide the segment.
+Background Git timeout in milliseconds. Default: 1500.
 .TP
 .B NBSP_CACHE_DIR
 Override the cache root. The default is the XDG cache directory when set,
@@ -129,8 +168,8 @@ behind, and
 .B *
 stashes.
 .SH EXIT STATUS
-Returns 0 on success, 2 for invalid command-line usage, and 1 for operational
-refresh or cache failures. Optional prompt context failures do not prevent a
-prompt from being rendered.
+Returns 0 on success, 2 for invalid command-line usage, and 1 for operational,
+serialization, refresh, or cache failures. Optional prompt context failures do
+not prevent a prompt from being rendered.
 .SH AUTHOR
 Igor Klepacki <neg4n@icloud.com>

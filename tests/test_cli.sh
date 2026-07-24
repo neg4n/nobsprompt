@@ -11,11 +11,27 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 "$nbsp" --version | grep -q '^nbsp 0\.1\.0$'
 "$nbsp" --help | grep -q 'nbsp init zsh'
+"$nbsp" --help | grep -q 'nbsp data'
 "$nbsp" --help | grep -q 'nbsp refresh \[--cwd PATH\] \[--notify\] \[--force\]'
 "$nbsp" init zsh > "$tmp/nbsp_zsh.zsh"
-cmp "$zsh_source" "$tmp/nbsp_zsh.zsh"
+test "$(sed -n '1p' "$tmp/nbsp_zsh.zsh")" = 'typeset -g _NBSP_INIT_MODE=prompt'
+sed '1d' "$tmp/nbsp_zsh.zsh" > "$tmp/nbsp_zsh_body.zsh"
+cmp "$zsh_source" "$tmp/nbsp_zsh_body.zsh"
+"$nbsp" init zsh --detached | grep -q '^typeset -g _NBSP_INIT_MODE=detached$'
 if "$nbsp" prompt --status 999 >/dev/null 2>&1; then
   echo 'invalid status unexpectedly succeeded' >&2
+  exit 1
+else
+  test $? -eq 2
+fi
+if "$nbsp" data --format json >/dev/null 2>&1; then
+  echo 'invalid data format unexpectedly succeeded' >&2
+  exit 1
+else
+  test $? -eq 2
+fi
+if "$nbsp" init zsh --unknown >/dev/null 2>&1; then
+  echo 'invalid init mode unexpectedly succeeded' >&2
   exit 1
 else
   test $? -eq 2
@@ -56,6 +72,34 @@ NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo"
 
 warm=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
 printf '%s' "$warm" | grep -Fq "[$branch +1 ~1 ?1]"
+
+data=$(cd "$repo" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
+  NBSP_CACHE_DIR="$cache" "$nbsp" data --status 7 --duration-ms 2450 --jobs 2)
+printf '%s\n' "$data" | grep -Fxq 'schema_version=1'
+printf '%s\n' "$data" | grep -Fq 'cwd='
+printf '%s\n' "$data" | grep -Fq '%20'
+printf '%s\n' "$data" | grep -Fq '%25'
+printf '%s\n' "$data" | grep -Fxq 'status=7'
+printf '%s\n' "$data" | grep -Fxq 'duration_ms=2450'
+printf '%s\n' "$data" | grep -Fxq 'jobs=2'
+printf '%s\n' "$data" | grep -Fxq 'node_version=22.14.0'
+printf '%s\n' "$data" | grep -Fxq 'git_present=1'
+printf '%s\n' "$data" | grep -Fxq 'git_valid=1'
+printf '%s\n' "$data" | grep -Fxq "git_branch=$branch"
+printf '%s\n' "$data" | grep -Fxq 'git_staged=1'
+printf '%s\n' "$data" | grep -Fxq 'git_modified=1'
+printf '%s\n' "$data" | grep -Fxq 'git_untracked=1'
+test "$(printf '%s\n' "$data" | wc -l | tr -d ' ')" = 18
+
+nul_check=$(cd "$repo" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
+  NBSP_CACHE_DIR="$cache" zsh -dfc '
+    typeset -A values
+    while IFS= read -r -d "" key && IFS= read -r -d "" value; do
+      values[$key]=$value
+    done < <("$1" data --status 7 --duration-ms 2450 --jobs 2 --format nul)
+    print -r -- "${#values} ${values[schema_version]} ${values[git_branch]} ${values[status]}"
+  ' _ "$nbsp")
+test "$nul_check" = "18 1 $branch 7"
 
 cache_file=$(find "$cache/git" -name '*.cache' -type f | head -n 1)
 printf 'version=1\nrepo=corrupt\nupdated_ms=oops\n' > "$cache_file"
@@ -112,20 +156,22 @@ chmod +x "$fakebin/git"
 (cd "$repo" && NBSP_GIT_MARKER="$marker" PATH="$fakebin:$PATH" \
   NBSP_CACHE_DIR="$cache" "$nbsp" prompt >/dev/null)
 test ! -e "$marker"
+(cd "$repo" && NBSP_GIT_MARKER="$marker" PATH="$fakebin:$PATH" \
+  NBSP_CACHE_DIR="$cache" "$nbsp" data >/dev/null)
+test ! -e "$marker"
 
 nvm=$(cd "$repo" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
-  NBSP_SHOW_GIT=0 "$nbsp" prompt --status 1 --duration-ms 2500 --jobs 2)
+  "$nbsp" prompt --status 1 --duration-ms 2500 --jobs 2)
 printf '%s' "$nvm" | grep -Fq '[node:22.14.0]'
 printf '%s' "$nvm" | grep -Fq '%F{green}[node:22.14.0]%f'
 printf '%s' "$nvm" | grep -Fq '[2.5s]'
 printf '%s' "$nvm" | grep -Fq '[jobs:2]'
 printf '%s' "$nvm" | grep -Fq '%F{red}e1%#%f'
 
-not_found=$(cd "$repo" && NBSP_SHOW_GIT=0 NBSP_SHOW_NVM=0 \
-  "$nbsp" prompt --status 127)
+not_found=$(cd "$repo" && NVM_BIN= "$nbsp" prompt --status 127)
 printf '%s' "$not_found" | grep -Fq '%F{red}e127%#%f'
 
-success=$(cd "$repo" && NBSP_SHOW_GIT=0 NBSP_SHOW_NVM=0 "$nbsp" prompt --status 0)
+success=$(cd "$repo" && NVM_BIN= "$nbsp" prompt --status 0)
 printf '%s' "$success" | grep -Fq ' %# '
 if printf '%s' "$success" | grep -Fq 'e0%#'; then
   echo 'successful prompt unexpectedly emitted an exit status' >&2
@@ -136,7 +182,15 @@ if printf '%s' "$success" | grep -Fq '%F{green}'; then
   exit 1
 fi
 
-init_check=$(PATH="$(dirname "$nbsp"):$PATH" NBSP_SHOW_GIT=0 zsh -dfc '
+opinionated=$(cd "$tmp" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
+  "$nbsp" prompt --status 1 --duration-ms 2450 --jobs 2)
+overridden=$(cd "$tmp" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
+  NBSP_COLOR_PATH=cyan NBSP_COLOR_NODE=red NBSP_PROMPT_CHAR='$' \
+  NBSP_DURATION_THRESHOLD_MS=999999 NBSP_SHOW_NVM=0 NBSP_SHOW_JOBS=0 \
+  "$nbsp" prompt --status 1 --duration-ms 2450 --jobs 2)
+test "$opinionated" = "$overridden"
+
+init_check=$(PATH="$(dirname "$nbsp"):$PATH" zsh -dfc '
   eval "$(nbsp init zsh)"
   eval "$(nbsp init zsh)"
   print -r -- $functions[_nbsp_precmd]
@@ -144,6 +198,13 @@ init_check=$(PATH="$(dirname "$nbsp"):$PATH" NBSP_SHOW_GIT=0 zsh -dfc '
 ')
 printf '%s' "$init_check" | grep -q '_nbsp_last_status'
 test "$(printf '%s\n' "$init_check" | tail -n 1)" = 1
+
+mode_check=$(PATH="$(dirname "$nbsp"):$PATH" zsh -dfc '
+  eval "$(nbsp init zsh --detached)"
+  eval "$(nbsp init zsh)"
+  print -r -- "$_nbsp_mode ${+NBSP_DATA}"
+')
+test "$mode_check" = 'detached 1'
 
 NBSP_CACHE_DIR="$cache" "$nbsp" cache clear
 test -z "$(find "$cache/git" -type f 2>/dev/null || true)"

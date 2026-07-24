@@ -2,29 +2,40 @@
 #define NBSP_PROMPT_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
-struct nbsp_config {
-    const char *color_path;
-    const char *color_git;
-    const char *color_node;
-    const char *color_meta;
-    const char *color_ok;
-    const char *color_error;
-    const char *prompt_char;
-    unsigned duration_threshold_ms;
-    unsigned git_timeout_ms;
-    bool show_git;
-    bool show_nvm;
-    bool show_jobs;
+#include "nbsp_util.h"
+
+struct nbsp_prompt_data {
+    char cwd[NBSP_PATH_CAP];
+    char path[NBSP_PATH_CAP];
+    int status;
+    unsigned long duration_ms;
+    unsigned jobs;
+    char node_version[256];
+    bool git_present;
+    bool git_valid;
+    char git_branch[256];
+    uint64_t git_updated_ms;
+    unsigned git_staged;
+    unsigned git_modified;
+    unsigned git_untracked;
+    unsigned git_conflicted;
+    unsigned git_ahead;
+    unsigned git_behind;
+    unsigned git_stashes;
 };
 
-void nbsp_config_from_env(struct nbsp_config *config);
-bool nbsp_color_valid(const char *color);
-char *nbsp_prompt_render(const char *cwd,
+unsigned nbsp_git_timeout_from_env(void);
+bool nbsp_prompt_data_collect(const char *cwd,
     int last_status,
     unsigned long duration_ms,
     unsigned jobs,
-    const struct nbsp_config *config);
+    struct nbsp_prompt_data *data);
+char *nbsp_prompt_render(const char *cwd,
+    int last_status,
+    unsigned long duration_ms,
+    unsigned jobs);
 int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify, bool force);
 
 #endif /* NBSP_PROMPT_H */

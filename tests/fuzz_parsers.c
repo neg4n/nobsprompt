@@ -47,25 +47,10 @@ static void exercise_input(const uint8_t *data, size_t size) {
     long parsed = 0;
     (void) nbsp_parse_long(input, -1000L, 1000L, &parsed);
 
-    struct nbsp_config config = {
-        .color_path = "white",
-        .color_git = "white",
-        .color_node = "green",
-        .color_meta = "yellow",
-        .color_ok = "none",
-        .color_error = "red",
-        .prompt_char = "%#",
-        .duration_threshold_ms = 2000U,
-        .git_timeout_ms = 50U,
-        .show_git = false,
-        .show_nvm = false,
-        .show_jobs = true,
-    };
     char *prompt = nbsp_prompt_render(input,
         (int) (size & 1U),
         (unsigned long) size,
-        (unsigned) (size & 7U),
-        &config);
+        (unsigned) (size & 7U));
     free(prompt);
 
     struct nbsp_buf buf;

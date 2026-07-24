@@ -94,7 +94,7 @@ proc finish_shell {} {
 
 # Exercise external editing, redraws, and buffer preservation without an automatic Git worker.
 set visual_value "$visual_editor --test-arg"
-spawn env PATH=$bindir:$original_path NBSP_SHOW_GIT=0 TMPDIR=$editor_tmp \
+spawn env PATH=$bindir:$original_path TMPDIR=$editor_tmp \
     VISUAL=$visual_value EDITOR=$fallback_editor NBSP_VISUAL_EDITOR=$visual_editor \
     NBSP_FALLBACK_EDITOR=$fallback_editor NBSP_EDITOR_LOG=$editor_log zsh -dfi
 wait_prompt

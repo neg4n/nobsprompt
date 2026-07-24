@@ -43,6 +43,7 @@ zsh_generated_source = custom_target(
 core_sources = files(
   'src/nbsp_util.c',
   'src/nbsp_cache.c',
+  'src/nbsp_data.c',
   'src/nbsp_git.c',
   'src/nbsp_prompt.c',
 ) + [zsh_generated_source]
@@ -67,5 +68,9 @@ nbsp_exe = executable(
 )
 
 install_man('doc/nbsp.1')
+install_data(
+  'doc/custom-prompts.md',
+  install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt'),
+)
 
 subdir('tests')

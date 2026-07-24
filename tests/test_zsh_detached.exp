@@ -1,0 +1,112 @@
+#!/usr/bin/expect -f
+
+set timeout 10
+log_user 0
+match_max -d 1000000
+
+if {$argc != 1} {
+    puts stderr "usage: test_zsh_detached.exp /absolute/path/to/nbsp"
+    exit 2
+}
+
+set nbsp [file normalize [lindex $argv 0]]
+set bindir [file dirname $nbsp]
+set original_path $env(PATH)
+set tmp [file join [expr {[info exists env(TMPDIR)] ? $env(TMPDIR) : "/tmp"}] "nbsp-detached-[pid]"]
+set repo [file join $tmp repo]
+set cache [file join $tmp cache]
+set fakebin [file join $tmp fakebin]
+set prompt_marker [file join $tmp prompt-called]
+file mkdir $repo
+file mkdir $fakebin
+
+set real_git [auto_execok git]
+if {$real_git eq ""} {
+    puts stderr "git is required for the detached Zsh test"
+    exit 1
+}
+exec $real_git -C $repo init -q 2>@1
+exec $real_git -C $repo config user.name {nbsp tests} 2>@1
+exec $real_git -C $repo config user.email {nbsp@example.invalid} 2>@1
+exec $real_git -C $repo config commit.gpgsign false 2>@1
+set tracked [open [file join $repo tracked.txt] w]
+puts $tracked initial
+close $tracked
+exec $real_git -C $repo add tracked.txt 2>@1
+exec $real_git -C $repo commit -qm initial 2>@1
+set tracked [open [file join $repo tracked.txt] a]
+puts $tracked modified
+close $tracked
+set branch [string trim [exec $real_git -C $repo branch --show-current 2>@1]]
+
+set git_wrapper [open [file join $fakebin git] w]
+puts $git_wrapper {#!/bin/sh}
+puts $git_wrapper {sleep 0.20}
+puts $git_wrapper {exec "$NBSP_REAL_GIT" "$@"}
+close $git_wrapper
+file attributes [file join $fakebin git] -permissions 0755
+
+set nbsp_wrapper [open [file join $fakebin nbsp] w]
+puts $nbsp_wrapper {#!/bin/sh}
+puts $nbsp_wrapper {if [ "$1" = prompt ]; then : > "$NBSP_PROMPT_MARKER"; fi}
+puts $nbsp_wrapper {exec "$NBSP_REAL" "$@"}
+close $nbsp_wrapper
+file attributes [file join $fakebin nbsp] -permissions 0755
+
+proc wait_prompt {} {
+    expect {
+        -re {[%#] } {}
+        timeout {
+            puts stderr "timed out waiting for a detached Zsh prompt"
+            exit 1
+        }
+        eof {
+            puts stderr "Zsh exited while waiting for a detached prompt"
+            exit 1
+        }
+    }
+}
+
+set scheduled_path $fakebin:$bindir:$original_path
+spawn env PATH=$scheduled_path NBSP_REAL=$nbsp NBSP_REAL_GIT=$real_git \
+    NBSP_PROMPT_MARKER=$prompt_marker NBSP_CACHE_DIR=$cache \
+    NBSP_EXPECT_BRANCH=$branch NVM_BIN=/tmp/.nvm/versions/node/v22.14.0/bin zsh -dfi
+wait_prompt
+send -- "cd -- $repo\r"
+wait_prompt
+send -- {typeset -gi test_updates=0; detached_update() { (( test_updates++ )); }; typeset -ga nbsp_data_update_functions=(detached_update); setopt promptsubst; typeset -g test_prefix=$'%{\e]999;prefix\a%}' test_suffix=$'%{\e]999;suffix\a%}'; typeset -g test_prompt=${test_prefix}'D:${NBSP_DATA[git_branch]}:%# '${test_suffix}; PROMPT=$test_prompt; eval "$(nbsp init zsh --detached)"}
+send -- "\r"
+wait_prompt
+after 900
+
+send -- {nbsp_prompt_escape $'a%b\ebad'; [[ $_nbsp_mode == detached && $PROMPT == $test_prompt && ${NBSP_DATA[schema_version]} == 1 && ${NBSP_DATA[git_valid]} == 1 && ${NBSP_DATA[git_branch]} == $NBSP_EXPECT_BRANCH && ${NBSP_DATA[git_modified]} == 1 && ${NBSP_DATA[node_version]} == 22.14.0 && $test_updates -ge 2 && $REPLY == 'a%%b?bad' && ! -e $NBSP_PROMPT_MARKER && $widgets[edit-command-line] == user:_nbsp_edit_command_line ]] && print -r -- DETACHED-DATA-OSC-EDITOR-PASS}
+send -- "\r"
+expect -re {DETACHED-DATA-OSC-EDITOR-PASS\r?\n}
+wait_prompt
+
+send -- "false\r"
+wait_prompt
+send -- {[[ ${NBSP_DATA[status]} == 1 && $PROMPT == $test_prompt ]] && print -r -- DETACHED-STATUS-PASS}
+send -- "\r"
+expect -re {DETACHED-STATUS-PASS\r?\n}
+wait_prompt
+
+send -- "sleep 0.05\r"
+wait_prompt
+send -- {(( NBSP_DATA[duration_ms] > 0 )) && [[ $PROMPT == $test_prompt ]] && print -r -- DETACHED-DURATION-PASS}
+send -- "\r"
+expect -re {DETACHED-DURATION-PASS\r?\n}
+wait_prompt
+
+send -- "sleep 1 &\r"
+wait_prompt
+send -- {(( NBSP_DATA[jobs] >= 1 )) && [[ $PROMPT == $test_prompt ]] && print -r -- DETACHED-JOBS-PASS}
+send -- "\r"
+expect -re {DETACHED-JOBS-PASS\r?\n}
+wait_prompt
+after 1200
+
+send -- "exit\r"
+expect eof
+file delete -force $tmp
+exit 0

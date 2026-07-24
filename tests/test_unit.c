@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include "nbsp_cache.h"
+#include "nbsp_data.h"
 #include "nbsp_git.h"
 #include "nbsp_prompt.h"
 #include "nbsp_util.h"
@@ -155,43 +156,80 @@ static void test_buffer_growth(void) {
     CHECK(buf.len == 1024U * 1024U);
     CHECK(buf.data && buf.data[buf.len] == '\0');
     nbsp_buf_free(&buf);
-    CHECK(nbsp_color_valid("none"));
-    CHECK(!nbsp_color_valid("red}%n"));
 }
 
 static void test_prompt(void) {
-    struct nbsp_config config = {
-        .color_path = "cyan",
-        .color_git = "magenta",
-        .color_node = "green",
-        .color_meta = "yellow",
-        .color_ok = "none",
-        .color_error = "red",
-        .prompt_char = "%>",
-        .duration_threshold_ms = 1000U,
-        .git_timeout_ms = 1500U,
-        .show_git = false,
-        .show_nvm = true,
-        .show_jobs = true,
-    };
     CHECK(setenv("HOME", "/Users/test", 1) == 0);
     CHECK(setenv("NVM_BIN", "/Users/test/.nvm/versions/node/v20.1.0/bin", 1) == 0);
-    char *prompt = nbsp_prompt_render("/Users/test/code/app", 1, 2450UL, 2U, &config);
+    char *prompt = nbsp_prompt_render("/Users/test/code/app", 1, 2450UL, 2U);
     CHECK(prompt != NULL);
-    CHECK(prompt && strstr(prompt, "%F{cyan}/U/t/c/app%f"));
+    CHECK(prompt && strstr(prompt, "%F{default}/U/t/c/app%f"));
     CHECK(prompt && strstr(prompt, "[node:20.1.0]"));
     CHECK(prompt && strstr(prompt, "[2.5s]"));
     CHECK(prompt && strstr(prompt, "[jobs:2]"));
-    CHECK(prompt && strstr(prompt, "%F{red}e1%%>%f"));
+    CHECK(prompt && strstr(prompt, "%F{red}e1%#%f"));
     free(prompt);
 
-    config.prompt_char = "%#";
-    config.show_nvm = false;
-    prompt = nbsp_prompt_render("/Users/test/code/app", 0, 0UL, 0U, &config);
+    CHECK(unsetenv("NVM_BIN") == 0);
+    prompt = nbsp_prompt_render("/Users/test/code/app", 0, 0UL, 0U);
     CHECK(prompt && strstr(prompt, " %# "));
     CHECK(prompt && !strstr(prompt, "e0%#"));
     CHECK(prompt && !strstr(prompt, "%F{green}"));
     free(prompt);
+}
+
+static void test_data_output(void) {
+    struct nbsp_prompt_data data = {
+        .cwd = "/tmp/project with space%",
+        .path = "/t/project with space%",
+        .status = 7,
+        .duration_ms = 2450UL,
+        .jobs = 2U,
+        .node_version = "22.14.0",
+        .git_present = true,
+        .git_valid = true,
+        .git_branch = "feature/100%",
+        .git_updated_ms = 123456U,
+        .git_staged = 1U,
+        .git_modified = 2U,
+        .git_untracked = 3U,
+        .git_conflicted = 4U,
+        .git_ahead = 5U,
+        .git_behind = 6U,
+        .git_stashes = 7U,
+    };
+
+    FILE *stream = tmpfile();
+    CHECK(stream != NULL);
+    if (stream) {
+        CHECK(nbsp_data_write(stream, &data, NBSP_DATA_LINES));
+        CHECK(fflush(stream) == 0);
+        CHECK(fseek(stream, 0L, SEEK_SET) == 0);
+        char output[2048];
+        size_t length = fread(output, 1U, sizeof output - 1U, stream);
+        output[length] = '\0';
+        CHECK(strstr(output, "schema_version=1\n") == output);
+        CHECK(strstr(output, "cwd=/tmp/project%20with%20space%25\n"));
+        CHECK(strstr(output, "git_branch=feature/100%25\n"));
+        CHECK(strstr(output, "git_stashes=7\n"));
+        CHECK(fclose(stream) == 0);
+    }
+
+    stream = tmpfile();
+    CHECK(stream != NULL);
+    if (stream) {
+        CHECK(nbsp_data_write(stream, &data, NBSP_DATA_NUL));
+        CHECK(fflush(stream) == 0);
+        CHECK(fseek(stream, 0L, SEEK_SET) == 0);
+        unsigned char output[2048];
+        size_t length = fread(output, 1U, sizeof output, stream);
+        unsigned separators = 0U;
+        for (size_t i = 0U; i < length; ++i) {
+            if (output[i] == '\0') ++separators;
+        }
+        CHECK(separators == 36U);
+        CHECK(fclose(stream) == 0);
+    }
 }
 
 int main(void) {
@@ -200,6 +238,7 @@ int main(void) {
     test_status_parser();
     test_cache();
     test_prompt();
+    test_data_output();
     test_buffer_growth();
     if (failures) {
         fprintf(stderr, "%d unit check(s) failed\n", failures);

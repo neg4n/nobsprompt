@@ -1,8 +1,10 @@
 # Performance and memory audit
 
-This audit covers the foreground `nbsp prompt` path. Git status refresh is
-deliberately asynchronous and is therefore measured for correctness and bounded
-execution rather than included in prompt latency.
+This audit covers the foreground `nbsp prompt` path. The detached
+`nbsp data` backend uses the same collector and can be measured by passing
+`data` as the second argument to `bench/benchmark.zsh`. Git status refresh is
+deliberately asynchronous and is therefore measured for correctness and
+bounded execution rather than included in foreground latency.
 
 ## Measurement snapshot
 
@@ -40,7 +42,8 @@ room to materially improve the observed wall time.
   repository validation and branch copying allocate no memory.
 - Prompt segments escape directly into one growable output buffer instead of
   allocating a temporary string for each path, Git, Node, duration, job, and
-  prompt-character segment.
+  prompt-character segment. The data serializer uses the same collected facts
+  without rendering or prompt escape expansion.
 - NVM version parsing is allocation-free in the foreground renderer.
 - Hidden symbols, dead stripping, `-O3`, and LTO keep the executable small.
 - Git remains outside the foreground path, uses `posix_spawnp`, has a hard
@@ -69,7 +72,7 @@ HEAD, staged/modified/untracked states, hostile `%` branch names, Zsh hook
 idempotence, forced debounce bypass, interactive ZLE redraws, terminal prompt
 wrapper preservation, external-editor buffer and Unicode cursor round trips,
 child file-descriptor isolation, complete stdout/stderr streams, and
-verification that foreground rendering never executes Git.
+verification that foreground rendering and data output never execute Git.
 
 Apple's ASan runtime does not implement LeakSanitizer. Requesting
 `detect_leaks=1` aborts before tests start, so the runner disables only that
