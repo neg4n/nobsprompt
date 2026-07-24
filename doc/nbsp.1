@@ -1,6 +1,6 @@
-.TH NBSP 1 "July 20, 2026" "nbsp 0.1.0" "User Commands"
+.TH NBSP 1 "July 24, 2026" "nbsp 0.1.0" "User Commands"
 .SH NAME
-nbsp \- a small asynchronous prompt for macOS and Zsh
+nbsp \- a lightweight prompt backend and opinionated Zsh prompt
 .SH SYNOPSIS
 .B nbsp init zsh
 [
@@ -54,17 +54,23 @@ nbsp \- a small asynchronous prompt for macOS and Zsh
 .B nbsp cache clear
 .SH DESCRIPTION
 .B nbsp
-renders an opinionated one-line Zsh prompt containing a shortened working
-directory, Git status, active NVM version, command duration, background job
-count, and the exact nonzero exit status. Failures render as a compact red
-status joined to the prompt character, such as e1% or e127%.
+collects prompt data for macOS and Zsh without executing Git or Node on the
+foreground rendering path. It exposes those facts through a detached Zsh
+integration and the
+.B data
+command, and includes an opinionated one-line prompt for immediate use.
 .PP
-The built-in presentation is intentionally fixed. Detached mode exposes the
-same cached facts and asynchronous lifecycle for user-owned prompts without
-reading or writing
+Detached mode provides cached facts, command lifecycle tracking, asynchronous
+Git refresh, and redraw callbacks for user-owned prompts without reading or
+writing
 .B PROMPT
 or
 .BR RPROMPT .
+The built-in mode uses the same backend to render a shortened working
+directory, Git status, active NVM version, command duration, background job
+count, and exact nonzero exit status. Failures appear as a compact red status
+joined to the prompt character, such as e1% or e127%. Its presentation is
+intentionally fixed.
 .PP
 The foreground renderer never executes Git. It reads the branch directly from
 the repository metadata and consumes a small cached status snapshot. A
@@ -78,7 +84,7 @@ Add the following after NVM initialization in
 eval "$(nbsp init zsh)"
 .EE
 .PP
-To build a custom prompt, use:
+To use the backend for a custom prompt instead, use:
 .PP
 .EX
 eval "$(nbsp init zsh --detached)"
@@ -105,15 +111,17 @@ without replacing existing user or plugin bindings.
 .SH COMMANDS
 .TP
 .B init zsh
-Print the fixed-prompt Zsh integration code. With
+Print Zsh integration code. The default installs the fixed, opinionated
+prompt. With
 .BR --detached ,
-install the data lifecycle without modifying the prompt.
+install the same data and redraw lifecycle without modifying the prompt.
 .TP
 .B prompt
-Render a prompt using supplied command metadata and the current directory.
+Render the built-in prompt using supplied command metadata and the current
+directory.
 .TP
 .B data
-Print the cache-only prompt facts. The default
+Print the versioned, cache-only prompt facts for custom consumers. The default
 .B lines
 format is a versioned sequence of percent-encoded key=value records.
 .B --format nul
@@ -129,8 +137,8 @@ and atomic cache publication are unchanged.
 .TP
 .B cache clear
 Remove cache and lock files owned by nbsp.
-.SH DETACHED MODE
-Detached mode publishes a global Zsh associative array named
+.SH PROMPT BACKEND
+The detached Zsh integration publishes a global associative array named
 .B NBSP_DATA
 after each precmd and asynchronous refresh. It also exposes
 .B nbsp_data_update_functions
@@ -138,7 +146,8 @@ for custom redraw callbacks and
 .B nbsp_prompt_escape
 for safely embedding dynamic text in Zsh prompts.
 .PP
-The complete schema, safe parsing rules, and custom prompt examples are
+The complete schema, lifecycle, safe parsing rules, and custom prompt examples
+are
 documented in
 .IR custom-prompts.md ,
 installed under the nobsprompt documentation directory.

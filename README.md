@@ -1,37 +1,20 @@
 # nobsprompt
 
-the **No BS prompt** aka **nobsprompt** aka `nbsp` is a small, opinionated prompt for macOS and Zsh. It is written in C,
-has no third-party runtime dependencies, uses ASCII symbols, and keeps Git off
-the foreground rendering path.
+**nobsprompt**, the No BS prompt (or `nbsp`), is an extremely lightweight prompt
+backend for macOS and Zsh. It collects useful shell and repository state without
+putting Git or Node on the foreground rendering path. Use the included
+opinionated prompt as-is, or use the same backend to build your own.
 
 ```text
 /U/i/D/p/nobsprompt [main +1 ~2 ?3 ^1] [node:22.14.0] [2.4s] [jobs:2] %
 ```
 
-## Why
-
-General-purpose prompts accumulate format languages, runtime probes, patched
-font requirements, and dozens of modules. The visible delay usually comes from
-filesystem scans and child processes rather than from drawing colored text.
-
-`nbsp` deliberately supports only:
-
-- a working directory with parent segments abbreviated and the final segment expanded;
-- branch plus staged, modified, untracked, conflicted, ahead/behind, and stash counts;
-- the active NVM version, derived from `NVM_BIN` without running Node;
-- command duration, background jobs, and the exact nonzero exit status.
-
-Successful commands keep the prompt clean. A failure prefixes the prompt
-character with a compact red status, such as `e1%` or `e127%`.
-
-The branch is read directly from `.git/HEAD`. Detailed status comes from an
-atomic cache while `git status --porcelain=v2` runs in the background. ZLE
-redraws the prompt when that refresh completes. There is no daemon, SQLite
-database, TOML parser, or Nerd Font prerequisite.
+`nbsp` is written in C, links no third-party libraries, requires no daemon or
+special font, and uses an atomic cache for detailed Git status.
 
 ## Install
 
-Requirements are macOS, Zsh 5.8 or newer, a C11 compiler, Git, Meson 1.1+, and
+Requirements: macOS, Zsh 5.8 or newer, a C11 compiler, Git, Meson 1.1+, and
 Ninja.
 
 ```sh
@@ -39,106 +22,150 @@ make test
 make install
 ```
 
-This installs `nbsp` to `~/.local/bin`, its man page to
-`~/.local/share/man/man1`, and the custom prompt guide under
-`~/.local/share/doc/nobsprompt`. To use another prefix, run for example
-`make install PREFIX=/opt/homebrew`.
+This installs the executable to `~/.local/bin`, the man page to
+`~/.local/share/man/man1`, and the custom-prompt guide to
+`~/.local/share/doc/nobsprompt`. Set another prefix when needed:
 
-Add these lines to `~/.zshrc`, after NVM initialization:
+```sh
+make install PREFIX=/opt/homebrew
+```
+
+Ensure the executable is on `PATH`, then choose one integration in `~/.zshrc`
+after NVM initialization:
+
+| Use | Zsh setup | Presentation |
+| --- | --- | --- |
+| Ready-made prompt | `eval "$(nbsp init zsh)"` | Fixed by `nbsp` |
+| Custom prompt | `eval "$(nbsp init zsh --detached)"` | Owned by your Zsh code |
+
+For a default local install:
 
 ```zsh
 export PATH="$HOME/.local/bin:$PATH"
 eval "$(nbsp init zsh)"
 ```
 
-Restart Zsh with `exec zsh`, or open a new terminal. If `~/.local/bin` is
-already on `PATH`, omit the first line.
+Open a new terminal or run `exec zsh`.
 
-## Two modes
+## The opinionated prompt
 
-The normal mode is deliberately fixed:
+The built-in prompt always shows the abbreviated working directory and, when
+available:
 
-```zsh
-eval "$(nbsp init zsh)"
-```
+- Git branch, staged, modified, untracked, conflicted, ahead, behind, and stash
+  counts;
+- the active NVM version, derived from `NVM_BIN` without starting Node;
+- commands lasting at least two seconds;
+- background jobs;
+- the exact nonzero exit status.
 
-It always shows the abbreviated path and Git when available, active NVM
-version, commands lasting at least two seconds, nonzero job count, and exact
-failure status. Its colors, segment visibility, threshold, and `%#` prompt
-character are not configurable.
+Successful commands keep the prompt clean. A failure prefixes the prompt
+character with a compact red status such as `e1%` or `e127%`.
 
-Detached mode keeps the same fast data collection, asynchronous Git refresh,
-command timing, jobs, redraw lifecycle, and external editing, but never reads
-or writes `PROMPT` or `RPROMPT`:
+Its colors, symbols, segments, duration threshold, and `%#` prompt character
+are intentionally fixed. Use the backend mode when you want to control
+presentation.
+
+## Build your own prompt
+
+Detached mode installs the same timing, job tracking, asynchronous refresh,
+redraw, and external-editor integration, but never reads or writes `PROMPT` or
+`RPROMPT`:
 
 ```zsh
 eval "$(nbsp init zsh --detached)"
 ```
 
-It publishes raw facts in the `NBSP_DATA` associative array. Build any prompt
-you want from those values, or consume the same backend directly with
-`nbsp data`. See the complete [custom prompt guide](doc/custom-prompts.md) for
-the schema, safety rules, lifecycle details, and copy-paste examples including
-minimal, two-line, right-side, Nerd Font, callback-driven, and OSC-wrapped
-prompts.
-
-## Operational configuration
-
-Cache files live in `$NBSP_CACHE_DIR`, `$XDG_CACHE_HOME/nbsp`, or
-`~/Library/Caches/nbsp`, in that order. `nbsp cache clear` removes them. `nbsp`
-does not change repository Git configuration; users with very large worktrees
-may independently enable Git's untracked cache or built-in FSMonitor.
-
-`NBSP_GIT_TIMEOUT_MS` controls background Git timeout and defaults to 1500 ms.
-These two operational settings apply to both modes. There are no presentation
-environment variables; use detached mode for presentation changes.
-
-`nbsp refresh --force` skips only the 250 ms duplicate-refresh debounce. The
-Zsh integration uses it when a refresh that started before a foreground
-command must be followed by a post-command snapshot. Locking, timeout, and
-atomic cache publication remain unchanged.
-
-## External command editing
-
-Press `Alt+E` to open the current command line in an external editor. Save and
-quit the editor to return the edited text to Zsh; the command is not executed
-until you press Enter. Multiline commands are supported.
-
-Zsh selects `$VISUAL`, then `$EDITOR`, and falls back to `vi`. Both variables
-may include editor arguments. When using `vi`, `vim`, or `nvim`, the Zsh cursor
-returns to the line and character where the editor was closed. Other editors,
-or an invalid cursor report, place it at the end of the edited command. For
-example:
+It publishes prompt facts in the global `NBSP_DATA` associative array:
 
 ```zsh
-export EDITOR='nvim'
-eval "$(nbsp init zsh)" # or: eval "$(nbsp init zsh --detached)"
+print -r -- "${NBSP_DATA[path]}"
+print -r -- "${NBSP_DATA[git_branch]}"
+print -r -- "${NBSP_DATA[node_version]}"
 ```
 
-The integration installs `Alt+E` in the Emacs, Vi insert, and Vi command
-keymaps only when that key is undefined. Existing user or plugin bindings are
-left unchanged.
+Register a callback to rebuild your prompt whenever fresh data arrives. The
+backend includes `nbsp_prompt_escape` for safely inserting dynamic values into
+Zsh prompt strings.
 
-## Performance
+The same facts are available without the Zsh integration:
 
-Foreground rendering performs directory metadata reads and a small cache read,
-but never starts Git or Node. Run the included dependency-free benchmark after
-a release build:
+```console
+$ nbsp data
+schema_version=1
+cwd=/Users/example/project
+path=/U/e/project
+status=0
+duration_ms=0
+jobs=0
+node_version=22.14.0
+git_present=1
+git_valid=1
+git_branch=main
+...
+```
+
+The readable format percent-encodes exceptional bytes. For lossless
+machine parsing, use `nbsp data --format nul`; never `eval` data output.
+
+See [Build a custom Zsh prompt](doc/custom-prompts.md) for a working minimal
+prompt, the complete schema and lifecycle, safe parsing rules, and layouts
+ranging from portable one-line prompts to right-side metadata, Nerd Font
+styling, prompt substitution, and OSC terminal titles.
+
+## How it works
+
+Foreground rendering reads directory metadata and a small cache. It never
+starts Git or Node.
+
+The branch is read directly from `.git/HEAD`. Detailed status is produced by
+`git status --porcelain=v2` in a background process, published through an
+atomic cache, and picked up by ZLE on redraw. The first prompt in a repository
+can therefore show a branch before its counters arrive.
+
+There is no daemon, database, configuration language, or prompt-format parser.
+The built-in prompt owns presentation; detached consumers receive data and own
+the resulting prompt completely, including any OSC sequences.
+
+## Shell integration
+
+Both modes track command duration, exit status, and job count through Zsh hooks.
+They also bind `Alt+E`, when that key is free, to edit the current command in
+`$VISUAL`, `$EDITOR`, or `vi`. Multiline buffers are supported and the command
+is returned to Zsh without being executed. `vi`, `vim`, and `nvim` also
+preserve the editor cursor position when it can be reported safely.
+
+Existing user or plugin bindings are not replaced. See `man nbsp` for the
+complete integration behavior.
+
+## Operational settings
+
+`NBSP_CACHE_DIR` overrides the cache root. Otherwise `nbsp` uses
+`$XDG_CACHE_HOME/nbsp` or `~/Library/Caches/nbsp`, in that order.
+`nbsp cache clear` removes cache and lock files owned by `nbsp`.
+
+`NBSP_GIT_TIMEOUT_MS` controls the background Git timeout and defaults to
+1500 ms. These are operational controls shared by both modes; there are no
+presentation environment variables.
+
+`nbsp refresh --force` bypasses only the 250 ms duplicate-refresh debounce.
+Locking, the timeout, and atomic cache publication still apply.
+
+## Performance and development
+
+The foreground path is designed to remain small and predictable. The project
+target is a warm p95 below 5 ms on the development Mac:
 
 ```sh
 zsh bench/benchmark.zsh ./build/nbsp
 zsh bench/benchmark.zsh ./build/nbsp data
 ```
 
-The project target is a warm p95 below 5 ms on the development Mac. Background
-Git work has a 1500 ms default timeout and preserves the last valid snapshot on
-failure.
+[PERFORMANCE.md](PERFORMANCE.md) contains measured latency and memory results,
+the hot-path audit, sanitizer and fuzzing coverage, and the evaluation of more
+complex alternatives.
 
-See [PERFORMANCE.md](PERFORMANCE.md) for the measured memory/latency audit,
-applied hot-path optimizations, sanitizer coverage, and evaluation of more
-aggressive daemon, Zsh-module, memoization, and PGO approaches.
-
-## Development
+For a debug build:
 
 ```sh
 meson setup build --buildtype=debug
@@ -146,36 +173,13 @@ meson compile -C build
 meson test -C build --print-errorlogs
 ```
 
-The interactive integration test uses macOS's built-in `/usr/bin/expect` to
-exercise real ZLE callbacks, external-editor cursor and buffer round trips,
-wrapped editing buffers, and stdout/stderr preservation.
+## Documentation
 
-Run the full memory-safety suite with AddressSanitizer, UndefinedBehaviorSanitizer,
-macOS guarded-allocation diagnostics, and the parser fuzzer:
-
-```sh
-NBSP_FUZZ_ITERATIONS=250000 sh tests/run_memory_checks.sh
-```
-
-Apple's AddressSanitizer runtime does not provide LeakSanitizer, so the runner
-disables that unsupported switch on macOS and compensates with guarded malloc,
-scribble-before/after allocation, per-operation heap checks, and measured peak
-memory. ASan still checks out-of-bounds access, use-after-free/scope/return,
-double-free, and the instrumented libc string operations.
-
-The deterministic mutation fuzzer is optional in normal builds and can also be
-run directly. It has no dependency on Apple's separately packaged libFuzzer
-runtime:
-
-```sh
-meson setup build-fuzz -Dfuzzing=true -Db_lundef=false
-meson compile -C build-fuzz fuzz-parsers
-./build-fuzz/tests/fuzz-parsers 500000
-```
-
-The source layout follows the same compact style as
-[`image-square-wizard`](https://github.com/neg4n/image-square-wizard): one root
-Meson project, focused C modules, a hand-written man page, and direct tests.
+- [`man nbsp`](doc/nbsp.1) - commands, configuration, editor behavior, and exit
+  statuses
+- [Build a custom Zsh prompt](doc/custom-prompts.md) - backend schema, lifecycle,
+  safety, and complete prompt recipes
+- [Performance](PERFORMANCE.md) - benchmarks, memory analysis, and validation
 
 ## License
 
