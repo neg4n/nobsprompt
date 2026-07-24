@@ -14,27 +14,62 @@ set bindir [file dirname $nbsp]
 set original_path $env(PATH)
 set tmp [file join [expr {[info exists env(TMPDIR)] ? $env(TMPDIR) : "/tmp"}] "nbsp-zle-[pid]"]
 set editor_log [file join $tmp editor.log]
-set visual_editor [file join $tmp visual-editor]
+set editor_tmp [file join $tmp editor-tmp]
+set visual_editor [file join $tmp nvim]
 set fallback_editor [file join $tmp fallback-editor]
 file mkdir $tmp
+file mkdir $editor_tmp
 
 set editor_script [open $visual_editor w]
-puts $editor_script {#!/bin/sh}
+puts $editor_script {#!/bin/zsh}
 puts $editor_script {printf '%s\n' VISUAL >> "$NBSP_EDITOR_LOG"}
-puts $editor_script {if test -e /dev/fd/"$NBSP_TEST_FD"; then}
+puts $editor_script {if [[ -n ${NBSP_TEST_FD-} && -e /dev/fd/$NBSP_TEST_FD ]]; then}
 puts $editor_script {  printf '%s\n' FD-LEAK >> "$NBSP_EDITOR_LOG"}
 puts $editor_script {else}
 puts $editor_script {  printf '%s\n' FD-CLEAN >> "$NBSP_EDITOR_LOG"}
 puts $editor_script {fi}
+puts $editor_script {for arg in "$@"; do}
+puts $editor_script {  [[ $arg == --test-arg ]] && printf '%s\n' ARG-PASS >> "$NBSP_EDITOR_LOG"}
+puts $editor_script {done}
+puts $editor_script {argv=( "${(@)argv:#--test-arg}" )}
 puts $editor_script {sleep 0.30}
-puts $editor_script {/usr/bin/perl -0pi -e 's/ORIGINAL/EDITEDXX/g' "$1"}
+puts $editor_script {buffer_file=${argv[-1]}}
+puts $editor_script {argv[-1]=()}
+puts $editor_script {[[ ${argv[-1]-} == -- ]] && argv[-1]=()}
+puts $editor_script {if [[ -z $(<$buffer_file) ]]; then}
+puts $editor_script {  print -rn -- $'αβγ\nsecond' > "$buffer_file"}
+puts $editor_script {  target_line=2}
+puts $editor_script {  target_column=3}
+puts $editor_script {else}
+puts $editor_script {  /usr/bin/perl -0pi -e 's/ORIGINAL/EDITEDXX/g' "$buffer_file"}
+puts $editor_script {  target_line=1}
+puts $editor_script {  target_column=5}
+puts $editor_script {fi}
+puts $editor_script {/usr/bin/vim -Nu NONE -n -es "${argv[@]}" -c "call cursor($target_line, $target_column)" -c wq -- "$buffer_file"}
+puts $editor_script {cursor_files=( $TMPDIR/nbsp-edit-cursor.*(N) )}
+puts $editor_script {if (( $#cursor_files )); then}
+puts $editor_script {  case ${NBSP_EDITOR_CURSOR_MODE:-valid} in}
+puts $editor_script {    missing) : > "$cursor_files[1]" ;;}
+puts $editor_script {    malformed) print -r -- malformed > "$cursor_files[1]" ;;}
+puts $editor_script {    out-of-range) print -r -- '1 1 999 999' > "$cursor_files[1]" ;;}
+puts $editor_script {  esac}
+puts $editor_script {fi}
 close $editor_script
 file attributes $visual_editor -permissions 0755
 
 set fallback_script [open $fallback_editor w]
 puts $fallback_script {#!/bin/sh}
 puts $fallback_script {printf '%s\n' EDITOR >> "$NBSP_EDITOR_LOG"}
-puts $fallback_script {/usr/bin/perl -0pi -e 's/ORIGINAL/WRONGXXX/g' "$1"}
+puts $fallback_script {if [ -n "${NBSP_TEST_FD:-}" ] && test -e /dev/fd/"$NBSP_TEST_FD"; then}
+puts $fallback_script {  printf '%s\n' FD-LEAK >> "$NBSP_EDITOR_LOG"}
+puts $fallback_script {else}
+puts $fallback_script {  printf '%s\n' FD-CLEAN >> "$NBSP_EDITOR_LOG"}
+puts $fallback_script {fi}
+puts $fallback_script {if [ -z "$(/bin/cat "$1")" ]; then}
+puts $fallback_script {  printf '%s' 'print -r -- FALLBACK' > "$1"}
+puts $fallback_script {else}
+puts $fallback_script {  /usr/bin/perl -0pi -e 's/ORIGINAL/WRONGXXX/g' "$1"}
+puts $fallback_script {fi}
 close $fallback_script
 file attributes $fallback_editor -permissions 0755
 
@@ -58,8 +93,10 @@ proc finish_shell {} {
 }
 
 # Exercise external editing, redraws, and buffer preservation without an automatic Git worker.
-spawn env PATH=$bindir:$original_path NBSP_SHOW_GIT=0 \
-    VISUAL=$visual_editor EDITOR=$fallback_editor NBSP_EDITOR_LOG=$editor_log zsh -dfi
+set visual_value "$visual_editor --test-arg"
+spawn env PATH=$bindir:$original_path NBSP_SHOW_GIT=0 TMPDIR=$editor_tmp \
+    VISUAL=$visual_value EDITOR=$fallback_editor NBSP_VISUAL_EDITOR=$visual_editor \
+    NBSP_FALLBACK_EDITOR=$fallback_editor NBSP_EDITOR_LOG=$editor_log zsh -dfi
 wait_prompt
 send -- {bindkey -v; bindkey -M emacs '\ee' self-insert}
 send -- "\r"
@@ -73,25 +110,58 @@ send -- "\r"
 expect -re {EDITOR-BINDINGS-PASS\r?\n}
 wait_prompt
 
-send -- {typeset -g test_prefix=$'%{\e]999;prefix\a%}' test_suffix=$'%{\e]999;suffix\a%}'; PROMPT=${test_prefix}${PROMPT}${test_suffix}}
+send -- {typeset -g test_prefix=$'%{\e]999;prefix\a%}' test_suffix=$'%{\e]999;suffix\a%}'; PROMPT=${test_prefix}${PROMPT}${test_suffix}; _nbsp_report_cursor() { print -ru2 -- "EDITOR-CURSOR-${CURSOR}-LENGTH-${#BUFFER}"; }; _nbsp_clear_buffer() { BUFFER=; CURSOR=0; }; zle -N _nbsp_report_cursor; zle -N _nbsp_clear_buffer; bindkey -M viins '\C-X\C-R' _nbsp_report_cursor; bindkey -M viins '\C-X\C-K' _nbsp_clear_buffer}
 send -- "\r"
 wait_prompt
 
-send -- {typeset -gi raw_fd=-1; exec {raw_fd}< <(sleep 0.10; print); sysopen -o cloexec -ru _nbsp_refresh_fd -- /dev/fd/$raw_fd; { exec {raw_fd}<&- } 2>/dev/null; _nbsp_refresh_pwd=$PWD; export NBSP_TEST_FD=$_nbsp_refresh_fd; zle -F "$_nbsp_refresh_fd" _nbsp_refresh_done}
+send -- "\033e"
+after 500
+send -- "\030\022"
+expect -re {EDITOR-CURSOR-6-LENGTH-10\r?\n}
+send -- "\030\013"
+after 100
+
+send -- {typeset -gi raw_fd=-1; exec {raw_fd}< <(sleep 0.10; print); sysopen -o cloexec -ru _nbsp_refresh_fd -- /dev/fd/$raw_fd; { exec {raw_fd}<&- } 2>/dev/null; _nbsp_refresh_pwd=$PWD; export NBSP_TEST_FD=$_nbsp_refresh_fd; zle -F "$_nbsp_refresh_fd" _nbsp_refresh_done; zstyle :zle:edit-command-line editor "$NBSP_VISUAL_EDITOR" --test-arg}
 send -- "\r"
 wait_prompt
 send -- "\033\[200~print -r -- ORIGINAL_ONE\nprint -r -- ORIGINAL_TWO\033\[201~"
 send -- "\033e"
 after 500
-send -- {; print -r -- EDITOR-ROUNDTRIP-DONE}
+send -- "\030\022"
+expect -re {EDITOR-CURSOR-4-LENGTH-49\r?\n}
 send -- "\r"
 expect -re {EDITEDXX_ONE\r?\n}
 expect -re {EDITEDXX_TWO\r?\n}
-expect -re {EDITOR-ROUNDTRIP-DONE\r?\n}
 wait_prompt
-send -- {editor_state=$(<$NBSP_EDITOR_LOG); [[ $editor_state == $'VISUAL\nFD-CLEAN' && $PROMPT == ${test_prefix}*${test_suffix} ]] && print -ru2 -- EDITOR-PRECEDENCE-FD-WRAPPER-PASS}
+send -- {typeset -a restored_editor cursor_files; zstyle -a :zle:edit-command-line editor restored_editor; cursor_files=( $TMPDIR/nbsp-edit-cursor.*(N) ); editor_state=$(<$NBSP_EDITOR_LOG); [[ ${restored_editor[1]} == $NBSP_VISUAL_EDITOR && ${restored_editor[2]} == --test-arg && $editor_state == *VISUAL* && $editor_state == *ARG-PASS* && $editor_state != *EDITOR* && $editor_state != *FD-LEAK* && $#cursor_files == 0 && $PROMPT == ${test_prefix}*${test_suffix} ]] && print -ru2 -- EDITOR-PRECEDENCE-FD-WRAPPER-PASS}
 send -- "\r"
 expect -re {EDITOR-PRECEDENCE-FD-WRAPPER-PASS\r?\n}
+wait_prompt
+
+foreach cursor_mode {missing malformed out-of-range} {
+    send -- "export NBSP_EDITOR_CURSOR_MODE=$cursor_mode\r"
+    wait_prompt
+    send -- "\033e"
+    after 500
+    send -- "\030\022"
+    expect -re {EDITOR-CURSOR-10-LENGTH-10\r?\n}
+    send -- "\030\013"
+    after 100
+}
+
+send -- {zstyle -d :zle:edit-command-line editor; VISUAL=; EDITOR=$NBSP_FALLBACK_EDITOR; export VISUAL EDITOR; unset NBSP_EDITOR_CURSOR_MODE}
+send -- "\r"
+wait_prompt
+send -- "\033e"
+after 200
+send -- "\030\022"
+expect -re {EDITOR-CURSOR-20-LENGTH-20\r?\n}
+send -- "\r"
+expect -re {FALLBACK\r?\n}
+wait_prompt
+send -- {typeset -a cursor_files; cursor_files=( $TMPDIR/nbsp-edit-cursor.*(N) ); editor_state=$(<$NBSP_EDITOR_LOG); [[ $editor_state == *EDITOR* && $editor_state != *FD-LEAK* && $#cursor_files == 0 ]] && print -r -- EDITOR-FALLBACK-CLEANUP-PASS}
+send -- "\r"
+expect -re {EDITOR-FALLBACK-CLEANUP-PASS\r?\n}
 wait_prompt
 
 send -- {_nbsp_refresh_pwd=$PWD; exec {_nbsp_refresh_fd}< <(sleep 0.10; print); zle -F "$_nbsp_refresh_fd" _nbsp_refresh_done}

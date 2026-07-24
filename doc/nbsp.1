@@ -62,8 +62,12 @@ then
 .BR EDITOR ,
 with
 .B vi
-as the fallback. The binding is installed in the Emacs, Vi insert, and Vi
-command keymaps without replacing existing user or plugin bindings.
+as the fallback. With vi, vim, or nvim, the Zsh cursor returns to the line and
+character where the editor was closed. Other editors, or an invalid cursor
+report, place it at the end of the edited command.
+.PP
+The binding is installed in the Emacs, Vi insert, and Vi command keymaps
+without replacing existing user or plugin bindings.
 .SH COMMANDS
 .TP
 .B init zsh

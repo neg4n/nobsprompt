@@ -67,9 +67,9 @@ files, cache identity validation, lock contention, 16 concurrent refreshes,
 background Git timeout, preservation of last-good data, worktrees, detached
 HEAD, staged/modified/untracked states, hostile `%` branch names, Zsh hook
 idempotence, forced debounce bypass, interactive ZLE redraws, terminal prompt
-wrapper preservation, external-editor buffer round trips, child file-descriptor
-isolation, complete stdout/stderr streams, and verification that foreground
-rendering never executes Git.
+wrapper preservation, external-editor buffer and Unicode cursor round trips,
+child file-descriptor isolation, complete stdout/stderr streams, and
+verification that foreground rendering never executes Git.
 
 Apple's ASan runtime does not implement LeakSanitizer. Requesting
 `detect_leaks=1` aborts before tests start, so the runner disables only that

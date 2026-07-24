@@ -101,7 +101,10 @@ quit the editor to return the edited text to Zsh; the command is not executed
 until you press Enter. Multiline commands are supported.
 
 Zsh selects `$VISUAL`, then `$EDITOR`, and falls back to `vi`. Both variables
-may include editor arguments. For example:
+may include editor arguments. When using `vi`, `vim`, or `nvim`, the Zsh cursor
+returns to the line and character where the editor was closed. Other editors,
+or an invalid cursor report, place it at the end of the edited command. For
+example:
 
 ```zsh
 export EDITOR='nvim'
@@ -139,8 +142,8 @@ meson test -C build --print-errorlogs
 ```
 
 The interactive integration test uses macOS's built-in `/usr/bin/expect` to
-exercise real ZLE callbacks, external-editor round trips, wrapped editing
-buffers, and stdout/stderr preservation.
+exercise real ZLE callbacks, external-editor cursor and buffer round trips,
+wrapped editing buffers, and stdout/stderr preservation.
 
 Run the full memory-safety suite with AddressSanitizer, UndefinedBehaviorSanitizer,
 macOS guarded-allocation diagnostics, and the parser fuzzer:
