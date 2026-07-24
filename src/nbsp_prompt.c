@@ -255,7 +255,7 @@ static void send_notification(bool notify) {
     }
 }
 
-int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify) {
+int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify, bool force) {
     struct nbsp_repo repo;
     if (!nbsp_git_discover(cwd, &repo)) {
         send_notification(notify);
@@ -263,7 +263,7 @@ int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify) {
     }
 
     struct nbsp_git_status cached;
-    if (nbsp_cache_load(repo.root, &cached)) {
+    if (!force && nbsp_cache_load(repo.root, &cached)) {
         uint64_t now = nbsp_wall_millis();
         if (now >= cached.updated_ms && now - cached.updated_ms < UINT64_C(250)) {
             nbsp_repo_free(&repo);
@@ -280,7 +280,7 @@ int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify) {
         return 0;
     }
 
-    if (nbsp_cache_load(repo.root, &cached)) {
+    if (!force && nbsp_cache_load(repo.root, &cached)) {
         uint64_t now = nbsp_wall_millis();
         if (now >= cached.updated_ms && now - cached.updated_ms < UINT64_C(250)) {
             nbsp_cache_unlock(lock_fd, lock_path);

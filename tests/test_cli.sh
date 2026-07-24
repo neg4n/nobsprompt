@@ -10,6 +10,7 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 "$nbsp" --version | grep -q '^nbsp 0\.1\.0$'
 "$nbsp" --help | grep -q 'nbsp init zsh'
+"$nbsp" --help | grep -q 'nbsp refresh \[--cwd PATH\] \[--notify\] \[--force\]'
 if "$nbsp" prompt --status 999 >/dev/null 2>&1; then
   echo 'invalid status unexpectedly succeeded' >&2
   exit 1
@@ -35,6 +36,14 @@ printf '%s' "$cold" | grep -Fq "[$branch ...]"
 printf '%s' "$cold" | grep -Fq "%F{default}[$branch ...]%f"
 
 NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo"
+printf 'forced refresh\n' >> "$repo/a.txt"
+NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo"
+debounced=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+printf '%s' "$debounced" | grep -Fq "[$branch]"
+NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo" --force
+forced=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+printf '%s' "$forced" | grep -Fq "[$branch ~1]"
+
 printf 'changed\n' >> "$repo/a.txt"
 printf 'staged\n' >> "$repo/b.txt"
 git -C "$repo" add b.txt

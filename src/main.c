@@ -25,7 +25,7 @@ static void print_usage(FILE *out) {
         "Usage:\n"
         "  nbsp init zsh\n"
         "  nbsp prompt [--status N] [--duration-ms N] [--jobs N]\n"
-        "  nbsp refresh [--cwd PATH] [--notify]\n"
+        "  nbsp refresh [--cwd PATH] [--notify] [--force]\n"
         "  nbsp cache clear\n"
         "  nbsp --help\n"
         "  nbsp --version\n",
@@ -97,10 +97,12 @@ static int command_prompt(int argc, char **argv) {
 static int command_refresh(int argc, char **argv) {
     const char *cwd_arg = NULL;
     bool notify = false;
-    enum { OPT_CWD = 1, OPT_NOTIFY };
+    bool force = false;
+    enum { OPT_CWD = 1, OPT_NOTIFY, OPT_FORCE };
     static const struct option options[] = {
         {"cwd", required_argument, NULL, OPT_CWD},
         {"notify", no_argument, NULL, OPT_NOTIFY},
+        {"force", no_argument, NULL, OPT_FORCE},
         {0, 0, 0, 0}
     };
     optind = 1;
@@ -110,6 +112,8 @@ static int command_refresh(int argc, char **argv) {
             cwd_arg = optarg;
         } else if (option == OPT_NOTIFY) {
             notify = true;
+        } else if (option == OPT_FORCE) {
+            force = true;
         } else {
             return 2;
         }
@@ -128,7 +132,7 @@ static int command_refresh(int argc, char **argv) {
     }
     struct nbsp_config config;
     nbsp_config_from_env(&config);
-    return nbsp_refresh(cwd_arg, config.git_timeout_ms, notify);
+    return nbsp_refresh(cwd_arg, config.git_timeout_ms, notify, force);
 }
 
 int main(int argc, char **argv) {

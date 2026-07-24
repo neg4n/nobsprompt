@@ -26,6 +26,9 @@ nbsp \- a small asynchronous prompt for macOS and Zsh
 [
 .B --notify
 ]
+[
+.B --force
+]
 .br
 .B nbsp cache clear
 .SH DESCRIPTION
@@ -56,6 +59,10 @@ Render a prompt using supplied command metadata and the current directory.
 .TP
 .B refresh
 Refresh the Git snapshot for a directory. This is normally asynchronous.
+The
+.B --force
+option bypasses only the 250 ms duplicate-refresh debounce; locking, timeout,
+and atomic cache publication are unchanged.
 .TP
 .B cache clear
 Remove cache and lock files owned by nbsp.

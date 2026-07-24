@@ -25,6 +25,6 @@ char *nbsp_prompt_render(const char *cwd,
     unsigned long duration_ms,
     unsigned jobs,
     const struct nbsp_config *config);
-int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify);
+int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify, bool force);
 
 #endif /* NBSP_PROMPT_H */
