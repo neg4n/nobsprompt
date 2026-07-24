@@ -4,7 +4,7 @@ void nbsp_print_zsh_init(FILE *out) {
     fputs(
         "if [[ -z ${_NBSP_INITIALIZED-} ]]; then\n"
         "  typeset -g _NBSP_INITIALIZED=1\n"
-        "  autoload -Uz add-zsh-hook\n"
+        "  autoload -Uz add-zsh-hook edit-command-line\n"
         "  zmodload zsh/datetime\n"
         "  zmodload zsh/parameter\n"
         "  zmodload zsh/system 2>/dev/null\n"
@@ -132,7 +132,17 @@ void nbsp_print_zsh_init(FILE *out) {
         "\n"
         "  add-zsh-hook preexec _nbsp_preexec\n"
         "  add-zsh-hook precmd _nbsp_precmd\n"
-        "  add-zsh-hook chpwd _nbsp_chpwd\n"
+        "  add-zsh-hook chpwd _nbsp_chpwd\n",
+        out);
+    fputs(
+        "\n"
+        "  zle -N edit-command-line\n"
+        "  for _nbsp_keymap in emacs viins vicmd; do\n"
+        "    if [[ $(bindkey -M \"$_nbsp_keymap\" '\\ee' 2>/dev/null) == *' undefined-key' ]]; then\n"
+        "      bindkey -M \"$_nbsp_keymap\" '\\ee' edit-command-line\n"
+        "    fi\n"
+        "  done\n"
+        "  unset _nbsp_keymap\n"
         "fi\n",
         out);
 }

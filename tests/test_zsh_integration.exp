@@ -12,6 +12,31 @@ if {$argc != 1} {
 set nbsp [file normalize [lindex $argv 0]]
 set bindir [file dirname $nbsp]
 set original_path $env(PATH)
+set tmp [file join [expr {[info exists env(TMPDIR)] ? $env(TMPDIR) : "/tmp"}] "nbsp-zle-[pid]"]
+set editor_log [file join $tmp editor.log]
+set visual_editor [file join $tmp visual-editor]
+set fallback_editor [file join $tmp fallback-editor]
+file mkdir $tmp
+
+set editor_script [open $visual_editor w]
+puts $editor_script {#!/bin/sh}
+puts $editor_script {printf '%s\n' VISUAL >> "$NBSP_EDITOR_LOG"}
+puts $editor_script {if test -e /dev/fd/"$NBSP_TEST_FD"; then}
+puts $editor_script {  printf '%s\n' FD-LEAK >> "$NBSP_EDITOR_LOG"}
+puts $editor_script {else}
+puts $editor_script {  printf '%s\n' FD-CLEAN >> "$NBSP_EDITOR_LOG"}
+puts $editor_script {fi}
+puts $editor_script {sleep 0.30}
+puts $editor_script {/usr/bin/perl -0pi -e 's/ORIGINAL/EDITEDXX/g' "$1"}
+close $editor_script
+file attributes $visual_editor -permissions 0755
+
+set fallback_script [open $fallback_editor w]
+puts $fallback_script {#!/bin/sh}
+puts $fallback_script {printf '%s\n' EDITOR >> "$NBSP_EDITOR_LOG"}
+puts $fallback_script {/usr/bin/perl -0pi -e 's/ORIGINAL/WRONGXXX/g' "$1"}
+close $fallback_script
+file attributes $fallback_editor -permissions 0755
 
 proc wait_prompt {} {
     expect {
@@ -32,15 +57,41 @@ proc finish_shell {} {
     expect eof
 }
 
-# Exercise redraws and editing-buffer preservation without an automatic Git worker.
-spawn env PATH=$bindir:$original_path NBSP_SHOW_GIT=0 zsh -dfi
+# Exercise external editing, redraws, and buffer preservation without an automatic Git worker.
+spawn env PATH=$bindir:$original_path NBSP_SHOW_GIT=0 \
+    VISUAL=$visual_editor EDITOR=$fallback_editor NBSP_EDITOR_LOG=$editor_log zsh -dfi
+wait_prompt
+send -- {bindkey -v; bindkey -M emacs '\ee' self-insert}
+send -- "\r"
 wait_prompt
 send -- {eval "$(nbsp init zsh)"}
 send -- "\r"
 wait_prompt
 
+send -- {[[ $(bindkey -M emacs '\ee') == *' self-insert' && $(bindkey -M viins '\ee') == *' edit-command-line' && $(bindkey -M vicmd '\ee') == *' edit-command-line' ]] && print -r -- EDITOR-BINDINGS-PASS}
+send -- "\r"
+expect -re {EDITOR-BINDINGS-PASS\r?\n}
+wait_prompt
+
 send -- {typeset -g test_prefix=$'%{\e]999;prefix\a%}' test_suffix=$'%{\e]999;suffix\a%}'; PROMPT=${test_prefix}${PROMPT}${test_suffix}}
 send -- "\r"
+wait_prompt
+
+send -- {typeset -gi raw_fd=-1; exec {raw_fd}< <(sleep 0.10; print); sysopen -o cloexec -ru _nbsp_refresh_fd -- /dev/fd/$raw_fd; { exec {raw_fd}<&- } 2>/dev/null; _nbsp_refresh_pwd=$PWD; export NBSP_TEST_FD=$_nbsp_refresh_fd; zle -F "$_nbsp_refresh_fd" _nbsp_refresh_done}
+send -- "\r"
+wait_prompt
+send -- "\033\[200~print -r -- ORIGINAL_ONE\nprint -r -- ORIGINAL_TWO\033\[201~"
+send -- "\033e"
+after 500
+send -- {; print -r -- EDITOR-ROUNDTRIP-DONE}
+send -- "\r"
+expect -re {EDITEDXX_ONE\r?\n}
+expect -re {EDITEDXX_TWO\r?\n}
+expect -re {EDITOR-ROUNDTRIP-DONE\r?\n}
+wait_prompt
+send -- {editor_state=$(<$NBSP_EDITOR_LOG); [[ $editor_state == $'VISUAL\nFD-CLEAN' && $PROMPT == ${test_prefix}*${test_suffix} ]] && print -ru2 -- EDITOR-PRECEDENCE-FD-WRAPPER-PASS}
+send -- "\r"
+expect -re {EDITOR-PRECEDENCE-FD-WRAPPER-PASS\r?\n}
 wait_prompt
 
 send -- {_nbsp_refresh_pwd=$PWD; exec {_nbsp_refresh_fd}< <(sleep 0.10; print); zle -F "$_nbsp_refresh_fd" _nbsp_refresh_done}
@@ -107,7 +158,6 @@ wait_prompt
 finish_shell
 
 # Exercise the real scheduler with slow Git, including CLOEXEC and a corrective force refresh.
-set tmp [file join [expr {[info exists env(TMPDIR)] ? $env(TMPDIR) : "/tmp"}] "nbsp-zle-[pid]"]
 set repo [file join $tmp repo]
 set cache [file join $tmp cache]
 set fakebin [file join $tmp fakebin]

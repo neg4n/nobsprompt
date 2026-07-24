@@ -94,6 +94,24 @@ Zsh integration uses it when a refresh that started before a foreground
 command must be followed by a post-command snapshot. Locking, timeout, and
 atomic cache publication remain unchanged.
 
+## External command editing
+
+Press `Alt+E` to open the current command line in an external editor. Save and
+quit the editor to return the edited text to Zsh; the command is not executed
+until you press Enter. Multiline commands are supported.
+
+Zsh selects `$VISUAL`, then `$EDITOR`, and falls back to `vi`. Both variables
+may include editor arguments. For example:
+
+```zsh
+export EDITOR='nvim'
+eval "$(nbsp init zsh)"
+```
+
+The integration installs `Alt+E` in the Emacs, Vi insert, and Vi command
+keymaps only when that key is undefined. Existing user or plugin bindings are
+left unchanged.
+
 ## Performance
 
 Foreground rendering performs directory metadata reads and a small cache read,
@@ -121,8 +139,8 @@ meson test -C build --print-errorlogs
 ```
 
 The interactive integration test uses macOS's built-in `/usr/bin/expect` to
-exercise real ZLE callbacks, wrapped editing buffers, and stdout/stderr
-preservation.
+exercise real ZLE callbacks, external-editor round trips, wrapped editing
+buffers, and stdout/stderr preservation.
 
 Run the full memory-safety suite with AddressSanitizer, UndefinedBehaviorSanitizer,
 macOS guarded-allocation diagnostics, and the parser fuzzer:

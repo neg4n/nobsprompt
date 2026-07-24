@@ -49,6 +49,21 @@ Add the following after NVM initialization in
 .EX
 eval "$(nbsp init zsh)"
 .EE
+.SH EXTERNAL COMMAND EDITING
+If it is not already bound,
+.B Alt+E
+opens the current Zsh editing buffer in an external editor. Save and quit the
+editor to return the edited text to Zsh. The command is not executed until
+Enter is pressed, and multiline buffers are supported.
+.PP
+The editor is selected from
+.BR VISUAL ,
+then
+.BR EDITOR ,
+with
+.B vi
+as the fallback. The binding is installed in the Emacs, Vi insert, and Vi
+command keymaps without replacing existing user or plugin bindings.
 .SH COMMANDS
 .TP
 .B init zsh
