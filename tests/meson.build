@@ -14,6 +14,14 @@ test(
   timeout: 30,
 )
 
+expect = find_program('expect')
+test(
+  'zsh-integration',
+  expect,
+  args: [files('test_zsh_integration.exp'), nbsp_exe],
+  timeout: 30,
+)
+
 if get_option('fuzzing')
   fuzz_flags = ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
   fuzz_parsers = executable(

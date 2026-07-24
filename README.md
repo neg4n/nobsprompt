@@ -89,6 +89,11 @@ Cache files live in `$NBSP_CACHE_DIR`, `$XDG_CACHE_HOME/nbsp`, or
 does not change repository Git configuration; users with very large worktrees
 may independently enable Git's untracked cache or built-in FSMonitor.
 
+`nbsp refresh --force` skips only the 250 ms duplicate-refresh debounce. The
+Zsh integration uses it when a refresh that started before a foreground
+command must be followed by a post-command snapshot. Locking, timeout, and
+atomic cache publication remain unchanged.
+
 ## Performance
 
 Foreground rendering performs directory metadata reads and a small cache read,
@@ -114,6 +119,10 @@ meson setup build --buildtype=debug
 meson compile -C build
 meson test -C build --print-errorlogs
 ```
+
+The interactive integration test uses macOS's built-in `/usr/bin/expect` to
+exercise real ZLE callbacks, wrapped editing buffers, and stdout/stderr
+preservation.
 
 Run the full memory-safety suite with AddressSanitizer, UndefinedBehaviorSanitizer,
 macOS guarded-allocation diagnostics, and the parser fuzzer:

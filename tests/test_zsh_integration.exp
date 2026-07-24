@@ -1,0 +1,174 @@
+#!/usr/bin/expect -f
+
+set timeout 10
+log_user 0
+match_max -d 2000000
+
+if {$argc != 1} {
+    puts stderr "usage: test_zsh_integration.exp /absolute/path/to/nbsp"
+    exit 2
+}
+
+set nbsp [file normalize [lindex $argv 0]]
+set bindir [file dirname $nbsp]
+set original_path $env(PATH)
+
+proc wait_prompt {} {
+    expect {
+        -re {[%#] } {}
+        timeout {
+            puts stderr "timed out waiting for a Zsh prompt"
+            exit 1
+        }
+        eof {
+            puts stderr "Zsh exited while waiting for a prompt"
+            exit 1
+        }
+    }
+}
+
+proc finish_shell {} {
+    send -- "exit\r"
+    expect eof
+}
+
+# Exercise redraws and editing-buffer preservation without an automatic Git worker.
+spawn env PATH=$bindir:$original_path NBSP_SHOW_GIT=0 zsh -dfi
+wait_prompt
+send -- {eval "$(nbsp init zsh)"}
+send -- "\r"
+wait_prompt
+
+send -- {typeset -g test_prefix=$'%{\e]999;prefix\a%}' test_suffix=$'%{\e]999;suffix\a%}'; PROMPT=${test_prefix}${PROMPT}${test_suffix}}
+send -- "\r"
+wait_prompt
+
+send -- {_nbsp_refresh_pwd=$PWD; exec {_nbsp_refresh_fd}< <(sleep 0.10; print); zle -F "$_nbsp_refresh_fd" _nbsp_refresh_done}
+send -- "\r"
+wait_prompt
+send -- {[[ $PROMPT == ${test_prefix}*${test_suffix} ]] && print -r -- PARTIAL-WRAPPER-PASS}
+after 300
+send -- "\r"
+expect -re {PARTIAL-WRAPPER-PASS\r?\n}
+wait_prompt
+
+send -- {stty rows 10 columns 24; kill -WINCH $$}
+send -- "\r"
+wait_prompt
+send -- {_nbsp_refresh_pwd=$PWD; exec {_nbsp_refresh_fd}< <(sleep 0.10; print); zle -F "$_nbsp_refresh_fd" _nbsp_refresh_done}
+send -- "\r"
+wait_prompt
+send -- {print -r -- WRAPPED-BUFFER-PASS-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789}
+after 300
+send -- "\r"
+expect -re {WRAPPED-BUFFER-PASS-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789\r?\n}
+wait_prompt
+
+send -- {_nbsp_refresh_pwd=$PWD; exec {_nbsp_refresh_fd}< <(sleep 0.05; print); zle -F "$_nbsp_refresh_fd" _nbsp_refresh_done}
+send -- "\r"
+wait_prompt
+send -- {for i in {1..200}; do print -r -- OUT-$i; print -ru2 -- ERR-$i; sleep 0.002; done; print -r -- STREAM-DONE}
+send -- "\r"
+expect -re {STREAM-DONE\r?\n}
+set stream_data $expect_out(buffer)
+set stdout_count [regexp -all -line {^OUT-[0-9]+\r?$} $stream_data]
+set stderr_count [regexp -all -line {^ERR-[0-9]+\r?$} $stream_data]
+if {$stdout_count != 200 || $stderr_count != 200} {
+    puts stderr "foreground output was lost: stdout=$stdout_count stderr=$stderr_count"
+    exit 1
+}
+wait_prompt
+
+send -- {_nbsp_refresh_pwd=$PWD; exec {_nbsp_refresh_fd}< <(sleep 0.05; print); zle -F "$_nbsp_refresh_fd" _nbsp_refresh_done}
+send -- "\r"
+wait_prompt
+send -- {for i in {1..100}; do printf '\rPROGRESS-%03d' $i >&2; sleep 0.002; done; print -u2; print -r -- PROGRESS-DONE}
+send -- "\r"
+expect -re {PROGRESS-DONE\r?\n}
+set progress_data $expect_out(buffer)
+set progress_count [regexp -all {PROGRESS-[0-9][0-9][0-9]} $progress_data]
+if {$progress_count != 100} {
+    puts stderr "carriage-return progress was lost: frames=$progress_count"
+    exit 1
+}
+wait_prompt
+
+send -- {_nbsp_refresh_pwd=$PWD; exec {_nbsp_refresh_fd}< <(sleep 0.50; print); zle -F "$_nbsp_refresh_fd" _nbsp_refresh_done}
+send -- "\r"
+wait_prompt
+send -- {cd /tmp}
+send -- "\r"
+wait_prompt
+after 600
+send -- {[[ $_nbsp_refresh_fd == -1 && $PROMPT == ${test_prefix}*${test_suffix} ]] && print -r -- CHPWD-CANCEL-PASS}
+send -- "\r"
+expect -re {CHPWD-CANCEL-PASS\r?\n}
+wait_prompt
+finish_shell
+
+# Exercise the real scheduler with slow Git, including CLOEXEC and a corrective force refresh.
+set tmp [file join [expr {[info exists env(TMPDIR)] ? $env(TMPDIR) : "/tmp"}] "nbsp-zle-[pid]"]
+set repo [file join $tmp repo]
+set cache [file join $tmp cache]
+set fakebin [file join $tmp fakebin]
+set refresh_log [file join $tmp refresh.log]
+set force_log [file join $tmp force.log]
+file mkdir $repo
+file mkdir $fakebin
+
+set real_git [auto_execok git]
+if {$real_git eq ""} {
+    puts stderr "git is required for the Zsh integration test"
+    exit 1
+}
+exec $real_git -C $repo init -q 2>@1
+
+set git_wrapper [open [file join $fakebin git] w]
+puts $git_wrapper {#!/bin/sh}
+puts $git_wrapper {sleep 1}
+puts $git_wrapper {exec "$NBSP_REAL_GIT" "$@"}
+close $git_wrapper
+file attributes [file join $fakebin git] -permissions 0755
+
+set nbsp_wrapper [open [file join $fakebin nbsp] w]
+puts $nbsp_wrapper {#!/bin/sh}
+puts $nbsp_wrapper {if [ "$1" = prompt ] && [ "${NBSP_FAIL_PROMPT:-0}" = 1 ]; then exit 1; fi}
+puts $nbsp_wrapper {if [ "$1" = refresh ]; then}
+puts $nbsp_wrapper {  printf '%s\n' "$*" >> "$NBSP_REFRESH_LOG"}
+puts $nbsp_wrapper {  case " $* " in *" --force "*) : > "$NBSP_FORCE_LOG" ;; esac}
+puts $nbsp_wrapper {fi}
+puts $nbsp_wrapper {exec "$NBSP_REAL" "$@"}
+close $nbsp_wrapper
+file attributes [file join $fakebin nbsp] -permissions 0755
+
+set scheduled_path $fakebin:$bindir:$original_path
+spawn env PATH=$scheduled_path NBSP_REAL=$nbsp NBSP_REAL_GIT=$real_git \
+    NBSP_REFRESH_LOG=$refresh_log NBSP_FORCE_LOG=$force_log \
+    NBSP_CACHE_DIR=$cache NBSP_GIT_TIMEOUT_MS=5000 zsh -dfi
+wait_prompt
+send -- "cd -- $repo\r"
+wait_prompt
+send -- {eval "$(nbsp init zsh)"}
+send -- "\r"
+wait_prompt
+
+send -- {typeset -gi test_render_count=0; functions[_nbsp_render_original]=$functions[_nbsp_render]; _nbsp_render() { (( test_render_count++ )); _nbsp_render_original "$@"; }; typeset -g test_prefix=$'%{\e]999;prefix\a%}' test_suffix=$'%{\e]999;suffix\a%}'; PROMPT=${test_prefix}${PROMPT}${test_suffix}; print -ru2 -- SCHEDULER-STDERR-PASS; NBSP_TEST_FD=$_nbsp_refresh_fd /bin/sh -c 'if test -e /dev/fd/"$NBSP_TEST_FD"; then echo FD-LEAK; else echo FD-CLEAN; fi'}
+send -- "\r"
+expect -re {SCHEDULER-STDERR-PASS\r?\n}
+expect -re {FD-CLEAN\r?\n}
+wait_prompt
+
+after 2300
+send -- {refresh_lines=("${(@f)$(<$NBSP_REFRESH_LOG)}"); force_seen=no; [[ -s $NBSP_FORCE_LOG ]] && force_seen=yes; wrapper_seen=no; [[ $PROMPT == ${test_prefix}*${test_suffix} ]] && wrapper_seen=yes; print -r -- CHAIN-render=${test_render_count}-force=${force_seen}-wrapper=${wrapper_seen}-refreshes=${#refresh_lines}}
+send -- "\r"
+expect -re {CHAIN-render=2-force=yes-wrapper=yes-refreshes=2\r?\n}
+wait_prompt
+
+send -- {NBSP_FAIL_PROMPT=1; export NBSP_FAIL_PROMPT; _nbsp_render; fallback_seen=no; [[ $PROMPT == ${test_prefix}'> '${test_suffix} ]] && fallback_seen=yes; NBSP_FAIL_PROMPT=0; export NBSP_FAIL_PROMPT; print -r -- FALLBACK-WRAPPER-$fallback_seen}
+send -- "\r"
+expect -re {FALLBACK-WRAPPER-yes\r?\n}
+wait_prompt
+finish_shell
+
+file delete -force $tmp
+exit 0

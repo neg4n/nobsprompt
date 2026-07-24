@@ -66,7 +66,9 @@ Integration coverage includes malformed and oversized values, corrupted cache
 files, cache identity validation, lock contention, 16 concurrent refreshes,
 background Git timeout, preservation of last-good data, worktrees, detached
 HEAD, staged/modified/untracked states, hostile `%` branch names, Zsh hook
-idempotence, and verification that foreground rendering never executes Git.
+idempotence, forced debounce bypass, interactive ZLE redraws, terminal prompt
+wrapper preservation, child file-descriptor isolation, complete stdout/stderr
+streams, and verification that foreground rendering never executes Git.
 
 Apple's ASan runtime does not implement LeakSanitizer. Requesting
 `detect_leaks=1` aborts before tests start, so the runner disables only that
