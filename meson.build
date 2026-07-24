@@ -31,13 +31,21 @@ add_project_arguments(
 
 src_inc = include_directories('src')
 
+python3 = find_program('python3')
+zsh_init_source = files('src/nbsp_zsh.zsh')
+zsh_generated_source = custom_target(
+  'nbsp-zsh-source',
+  input: ['tools/embed_zsh.py', 'src/nbsp_zsh.zsh'],
+  output: 'nbsp_zsh.c',
+  command: [python3, '@INPUT0@', '@INPUT1@', '@OUTPUT@'],
+)
+
 core_sources = files(
   'src/nbsp_util.c',
   'src/nbsp_cache.c',
   'src/nbsp_git.c',
   'src/nbsp_prompt.c',
-  'src/nbsp_zsh.c',
-)
+) + [zsh_generated_source]
 
 core_lib = static_library(
   'nbsp-core',

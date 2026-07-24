@@ -5,12 +5,15 @@ case $1 in
   /*) nbsp=$1 ;;
   *) nbsp=$(cd "$(dirname "$1")" && pwd)/$(basename "$1") ;;
 esac
+zsh_source=$2
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/nbsp-cli.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 "$nbsp" --version | grep -q '^nbsp 0\.1\.0$'
 "$nbsp" --help | grep -q 'nbsp init zsh'
 "$nbsp" --help | grep -q 'nbsp refresh \[--cwd PATH\] \[--notify\] \[--force\]'
+"$nbsp" init zsh > "$tmp/nbsp_zsh.zsh"
+cmp "$zsh_source" "$tmp/nbsp_zsh.zsh"
 if "$nbsp" prompt --status 999 >/dev/null 2>&1; then
   echo 'invalid status unexpectedly succeeded' >&2
   exit 1

@@ -10,8 +10,15 @@ sh = find_program('sh')
 test(
   'cli',
   sh,
-  args: [files('test_cli.sh'), nbsp_exe],
+  args: [files('test_cli.sh'), nbsp_exe, zsh_init_source],
   timeout: 30,
+)
+
+zsh = find_program('zsh')
+test(
+  'zsh-syntax',
+  zsh,
+  args: ['-n', zsh_init_source],
 )
 
 expect = find_program('expect')
