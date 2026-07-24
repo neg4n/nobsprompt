@@ -1,0 +1,110 @@
+.TH NBSP 1 "July 20, 2026" "nbsp 0.1.0" "User Commands"
+.SH NAME
+nbsp \- a small asynchronous prompt for macOS and Zsh
+.SH SYNOPSIS
+.B nbsp init zsh
+.br
+.B nbsp prompt
+[
+.B --status
+.I N
+]
+[
+.B --duration-ms
+.I N
+]
+[
+.B --jobs
+.I N
+]
+.br
+.B nbsp refresh
+[
+.B --cwd
+.I PATH
+]
+[
+.B --notify
+]
+.br
+.B nbsp cache clear
+.SH DESCRIPTION
+.B nbsp
+renders an opinionated one-line Zsh prompt containing a shortened working
+directory, Git status, active NVM version, command duration, background job
+count, and the exact nonzero exit status. Failures render as a compact red
+status joined to the prompt character, such as e1% or e127%.
+.PP
+The foreground renderer never executes Git. It reads the branch directly from
+the repository metadata and consumes a small cached status snapshot. A
+background refresh obtains porcelain-v2 status and asks ZLE to redraw the
+prompt when ready.
+.SH SETUP
+Add the following after NVM initialization in
+.IR ~/.zshrc :
+.PP
+.EX
+eval "$(nbsp init zsh)"
+.EE
+.SH COMMANDS
+.TP
+.B init zsh
+Print the Zsh integration code.
+.TP
+.B prompt
+Render a prompt using supplied command metadata and the current directory.
+.TP
+.B refresh
+Refresh the Git snapshot for a directory. This is normally asynchronous.
+.TP
+.B cache clear
+Remove cache and lock files owned by nbsp.
+.SH CONFIGURATION
+Set variables before running
+.B init zsh.
+The integration exports them for the native renderer.
+.TP
+.B NBSP_COLOR_PATH, NBSP_COLOR_GIT, NBSP_COLOR_NODE, NBSP_COLOR_META
+Segment colors. Defaults: terminal foreground (default), terminal foreground
+(default), green, and yellow.
+.TP
+.B NBSP_COLOR_OK, NBSP_COLOR_ERROR
+Prompt character colors. Defaults: none and red.
+.TP
+.B NBSP_PROMPT_CHAR
+Prompt character. Default: Zsh native %# (% normally, # when privileged).
+Set it to $ to force a dollar prompt.
+.TP
+.B NBSP_DURATION_THRESHOLD_MS
+Minimum duration to display. Default: 2000.
+.TP
+.B NBSP_GIT_TIMEOUT_MS
+Background Git timeout. Default: 1500.
+.TP
+.B NBSP_SHOW_GIT, NBSP_SHOW_NVM, NBSP_SHOW_JOBS
+Set any of these to 0 to hide the segment.
+.TP
+.B NBSP_CACHE_DIR
+Override the cache root. The default is the XDG cache directory when set,
+otherwise ~/Library/Caches/nbsp.
+.SH GIT MARKERS
+.B +
+staged,
+.B ~
+modified,
+.B ?
+untracked,
+.B !
+conflicted,
+.B ^
+ahead,
+.B v
+behind, and
+.B *
+stashes.
+.SH EXIT STATUS
+Returns 0 on success, 2 for invalid command-line usage, and 1 for operational
+refresh or cache failures. Optional prompt context failures do not prevent a
+prompt from being rendered.
+.SH AUTHOR
+Igor Klepacki <neg4n@icloud.com>

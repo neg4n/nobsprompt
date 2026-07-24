@@ -1,0 +1,6 @@
+option(
+  'fuzzing',
+  type: 'boolean',
+  value: false,
+  description: 'Build mutation-fuzz targets with AddressSanitizer and UndefinedBehaviorSanitizer',
+)

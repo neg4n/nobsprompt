@@ -1,0 +1,63 @@
+project('nobsprompt', 'c',
+  version: '0.1.0',
+  meson_version: '>=1.1.0',
+  default_options: [
+    'c_std=c11',
+    'warning_level=3',
+  ],
+)
+
+cc = meson.get_compiler('c')
+
+warn_args = cc.get_supported_arguments([
+  '-Wpedantic',
+  '-Werror=implicit-function-declaration',
+  '-Wshadow',
+  '-Wconversion',
+  '-Wstrict-prototypes',
+  '-fvisibility=hidden',
+])
+
+dead_strip_args = cc.get_supported_link_arguments(['-Wl,-dead_strip'])
+
+add_project_arguments(
+  warn_args + [
+    '-D_POSIX_C_SOURCE=200809L',
+    '-D_DARWIN_C_SOURCE',
+    '-DNBSP_VERSION="@0@"'.format(meson.project_version()),
+  ],
+  language: 'c',
+)
+
+src_inc = include_directories('src')
+
+core_sources = files(
+  'src/nbsp_util.c',
+  'src/nbsp_cache.c',
+  'src/nbsp_git.c',
+  'src/nbsp_prompt.c',
+  'src/nbsp_zsh.c',
+)
+
+core_lib = static_library(
+  'nbsp-core',
+  core_sources,
+  include_directories: src_inc,
+)
+
+core_dep = declare_dependency(
+  link_with: core_lib,
+  include_directories: src_inc,
+)
+
+nbsp_exe = executable(
+  'nbsp',
+  'src/main.c',
+  dependencies: core_dep,
+  link_args: dead_strip_args,
+  install: true,
+)
+
+install_man('doc/nbsp.1')
+
+subdir('tests')

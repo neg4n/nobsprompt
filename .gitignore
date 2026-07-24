@@ -1,0 +1,26 @@
+# Meson build directories and metadata
+/build/
+/build*/
+/_build/
+/builddir*/
+/meson-logs/
+/meson-info/
+/meson-private/
+/compile_commands.json
+
+# C build, coverage, and profiling artifacts
+*.o
+*.a
+*.dylib
+*.so
+*.gcno
+*.gcda
+*.gcov
+*.profraw
+*.profdata
+
+# Editors and macOS
+*~
+*.swp
+.DS_Store
+.cache/
