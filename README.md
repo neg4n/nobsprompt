@@ -127,9 +127,12 @@ foreground, background refresh, cache, and redraw lifecycle.
 
 Both modes track command duration, exit status, and job count through Zsh
 hooks. They bind `Alt+E`, when that key is free, to edit the current command in
-`$VISUAL`, `$EDITOR`, or `vi`. Existing user and plugin bindings are preserved.
-See the [external editor guide](https://nobsprompt.pages.dev/reference/external-editor)
-for multiline and cursor behavior.
+`$VISUAL`, `$EDITOR`, or `vi`. Multiline commands are supported, and vi, vim,
+and nvim restore the cursor to the final edited line and character when the
+command returns to Zsh. Other editors place it at the end of the edited
+command. Existing user and plugin bindings are preserved. See the
+[external editor guide](https://nobsprompt.pages.dev/reference/external-editor)
+for the complete behavior.
 
 ## Operational settings
 

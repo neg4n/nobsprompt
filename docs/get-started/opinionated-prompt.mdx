@@ -69,13 +69,15 @@ presentation settings. Use detached mode for presentation changes.
 
 The ready-made and detached modes use the same Zsh lifecycle for timing, jobs,
 asynchronous Git refresh, redraw correction, and external editing with
-`Alt+E`.
+`Alt+E`. With vi, vim, or nvim, the editor cursor position is restored when the
+command returns to Zsh.
 
 <CardGroup cols={2}>
   <Card title="Build a custom prompt" href="/custom-prompts" icon="code">
     Own the presentation while keeping the same backend.
   </Card>
   <Card title="External editor" href="/reference/external-editor" icon="edit">
-    Configure and use `Alt+E` with vi, vim, nvim, nano, or another editor.
+    Edit multiline commands with `Alt+E` and preserve the cursor position in
+    vi, vim, or nvim.
   </Card>
 </CardGroup>

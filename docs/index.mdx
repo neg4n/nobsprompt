@@ -71,7 +71,8 @@ Open a new terminal or run `exec zsh`.
 - the active NVM version without starting Node;
 - command duration, background jobs, and exact exit status;
 - asynchronous Git refresh with ZLE redraw correction;
-- external command editing through `Alt+E`;
+- external command editing through `Alt+E`, with multiline buffers and cursor
+  restoration for vi, vim, and nvim;
 - a versioned line or NUL-delimited data interface for custom consumers.
 
 ## What it deliberately avoids
@@ -87,6 +88,7 @@ segments, thresholds, or OSC wrappers.
     redraw lifecycle.
   </Card>
   <Card title="CLI reference" href="/reference/cli" icon="file-text">
-    See every command, option, environment variable, marker, and exit status.
+    See every command, option, data format, refresh control, and process exit
+    status.
   </Card>
 </CardGroup>

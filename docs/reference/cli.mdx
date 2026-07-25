@@ -1,6 +1,6 @@
 ---
 title: CLI reference
-description: Reference every nbsp command and option, including prompt metadata, data formats, refresh controls, Git markers, and exit statuses.
+description: Reference every nbsp command and option, including prompt metadata, data formats, refresh controls, and process exit statuses.
 ---
 
 ## Synopsis
@@ -50,6 +50,8 @@ nbsp prompt --status 1 --duration-ms 2400 --jobs 2
 | `--jobs N` | Background job count |
 
 The command never starts Git or Node.
+See [Opinionated prompt](/get-started/opinionated-prompt) for the fixed layout,
+segment visibility, symbols, colors, and failure rendering.
 
 ## `data`
 
@@ -90,18 +92,6 @@ Remove cache and lock files owned by `nbsp`:
 ```sh
 nbsp cache clear
 ```
-
-## Git markers
-
-| Marker | Meaning |
-| --- | --- |
-| `+` | Staged paths |
-| `~` | Modified paths |
-| `?` | Untracked paths |
-| `!` | Conflicted paths |
-| `^` | Commits ahead of upstream |
-| `v` | Commits behind upstream |
-| `*` | Stashes |
 
 ## Process exit status
 
