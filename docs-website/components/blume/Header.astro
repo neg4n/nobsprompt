@@ -1,0 +1,224 @@
+---
+import Ask from "blume:ask";
+import data from "blume:data";
+import { withBase } from "blume/components/islands/base-path.ts";
+import type { ComponentOverride } from "blume/core/define-components.ts";
+import { EN_UI } from "blume/core/i18n-ui.ts";
+import type { UIStrings } from "blume/core/i18n-ui.ts";
+import type { LocaleSwitchOption, Navigation } from "blume/core/types.ts";
+import { GITHUB_MARK } from "blume/components/github-mark.ts";
+import Icon from "blume/components/Icon.astro";
+import LanguageSwitcher from "blume/components/layout/LanguageSwitcher.astro";
+import Logo from "blume/components/layout/Logo.astro";
+import { activeTabForRoute } from "blume/components/layout/nav-utils.ts";
+import NavSelector from "blume/components/layout/NavSelector.astro";
+import { resolveSlot } from "blume/components/layout/overrides.ts";
+import Search from "blume/components/layout/Search.astro";
+
+interface Props {
+  site: { title: string };
+  logo?: {
+    svg?: string;
+    light?: string;
+    dark?: string;
+    alt: string;
+    href: string;
+    text?: string;
+  } | null;
+  navigation: Navigation;
+  route: string;
+  searchEnabled: boolean;
+  /**
+   * Whether the search modal offers an "Ask AI" hand-off. Defaults to whether
+   * Ask AI is configured, so no page has to pass it; a layout can still opt a
+   * shell out explicitly.
+   */
+  askEnabled?: boolean;
+  /** Localized Ask AI strings for the active locale. */
+  askStrings?: UIStrings["ask"];
+  // The mobile menu button toggles the docs sidebar drawer; custom pages
+  // without a sidebar (e.g. a landing page) pass `false` to hide it.
+  hasSidebar?: boolean;
+  /**
+   * Whether the layout renders a drawer for the nav toggle to open. A shell
+   * with no drawer at all (the Scalar reference layout) passes `false`, else
+   * the hamburger would lock page scroll with nothing appearing.
+   */
+  hasDrawer?: boolean;
+  searchStrings?: UIStrings["search"];
+  switcherStrings?: UIStrings["languageSwitcher"];
+  /** Localized chrome labels (nav toggle, sections, GitHub, theme toggle). */
+  navStrings?: UIStrings["nav"];
+  localeSwitch?: LocaleSwitchOption[];
+  /** Active locale for per-language search filtering. */
+  searchLocale?: string;
+  /**
+   * Layout-slot overrides forwarded from the root layout. The header honors
+   * `Logo` and `Search` here so those pieces can be replaced without swapping
+   * the whole header.
+   */
+  layout?: Record<string, ComponentOverride>;
+}
+
+const {
+  site,
+  logo,
+  navigation,
+  route,
+  searchEnabled,
+  // `config.ask` is null whenever Ask AI is off, so the header is the one place
+  // that has to know - the Ask trigger below and the search modal's hand-off to
+  // it both switch on this, and every page gets both for free.
+  askEnabled = Boolean(data.config.ask),
+  askStrings,
+  hasSidebar = true,
+  hasDrawer = true,
+  searchStrings,
+  switcherStrings,
+  navStrings,
+  localeSwitch,
+  searchLocale,
+  layout = {},
+} = Astro.props;
+
+// Merge over the English defaults so a label missing from a translation (or
+// from a not-yet-regenerated snapshot) still renders instead of coming out
+// blank - the PageActions pattern.
+const n = { ...EN_UI.nav, ...navStrings };
+
+const LogoSlot = resolveSlot(layout.Logo, Logo);
+const SearchSlot = resolveSlot(layout.Search, Search);
+
+// The mobile nav-toggle opens a drawer of navigation. On docs pages that drawer
+// is the sidebar tree (`hasSidebar`); on chrome-only pages (a landing page via
+// PageLayout) it's a tabs-only drawer the layout renders - so the button is also
+// needed whenever there are tabs to reveal.
+const showNavToggle = hasDrawer && (hasSidebar || navigation.tabs.length > 0);
+const activeTab = activeTabForRoute(navigation.tabs, route);
+// Where the header's inline tab bar appears. With a sidebar it shares the `md`
+// breakpoint with the docs drawer; without one, the tabs-only drawer is the sole
+// mobile nav below `lg`, so the inline tabs wait until `lg` to avoid duplicating
+// the drawer's links between `md` and `lg`.
+const tabsNavClass = hasSidebar
+  ? "hidden gap-1 md:flex"
+  : "hidden gap-1 lg:flex";
+
+const iconButton =
+  "inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
+---
+
+<header
+  class="sticky top-0 z-40 flex h-16 items-center gap-3 bg-background/90 px-4 backdrop-blur md:px-6"
+  data-blume-header
+>
+  <LogoSlot logo={logo} site={site} />
+  {
+    navigation.selectors.length > 0 && (
+      <div class="flex items-center gap-1.5">
+        {navigation.selectors.map((selector) => (
+          <NavSelector route={route} selector={selector} />
+        ))}
+      </div>
+    )
+  }
+  {
+    navigation.tabs.length > 0 && (
+      <nav aria-label={n.sections} class={tabsNavClass}>
+        {navigation.tabs.map((tab) => (
+          <a
+            aria-current={tab === activeTab ? "page" : undefined}
+            class="rounded-full px-3 py-1.5 font-medium text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground aria-[current=page]:text-foreground"
+            href={withBase(tab.href ?? tab.path)}
+          >
+            {tab.label}
+          </a>
+        ))}
+      </nav>
+    )
+  }
+  <div class="flex-1"></div>
+  {
+    localeSwitch && localeSwitch.length > 1 && (
+      <LanguageSwitcher
+        label={switcherStrings?.label ?? "Language"}
+        options={localeSwitch}
+        untranslatedLabel={switcherStrings?.untranslated ?? "Not translated"}
+      />
+    )
+  }
+  {
+    searchEnabled && (
+      <SearchSlot
+        askEnabled={askEnabled}
+        locale={searchLocale}
+        navigation={navigation}
+        popularPages={data.config.search.popular}
+        strings={searchStrings}
+      />
+    )
+  }
+  <div class="flex items-center gap-2">
+    {
+      navigation.repoUrl && (
+        <a
+          aria-label={n.githubRepository}
+          class={iconButton}
+          href={navigation.repoUrl}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <svg
+            aria-hidden="true"
+            fill="currentColor"
+            height="18"
+            set:html={GITHUB_MARK}
+            viewBox="0 0 16 16"
+            width="18"
+            xmlns="http://www.w3.org/2000/svg"
+          />
+        </a>
+      )
+    }
+    <button
+      aria-label={n.toggleTheme}
+      class={iconButton}
+      data-blume-theme-toggle
+      type="button"
+    >
+      <span class="inline-flex dark:hidden"><Icon name="sun" size={18} /></span>
+      <span class="hidden dark:inline-flex"><Icon name="moon" size={18} /></span>
+    </button>
+    {askEnabled && <Ask strings={askStrings} />}
+    {
+      showNavToggle && (
+        <button
+          aria-controls="blume-mobile-navigation"
+          aria-expanded="false"
+          aria-label={n.toggleNavigation}
+          class={`${iconButton} shrink-0 lg:hidden`}
+          data-blume-nav-close-label={n.closeNavigation}
+          data-blume-nav-open-label={n.toggleNavigation}
+          data-blume-nav-toggle
+          type="button"
+        >
+          <span data-blume-nav-menu-icon>
+            <Icon name="menu" size={20} />
+          </span>
+          <span data-blume-nav-close-icon>
+            <Icon name="x" size={20} />
+          </span>
+        </button>
+      )
+    }
+  </div>
+</header>
+{
+  showNavToggle && (
+    <div
+      aria-hidden="true"
+      class="lg:hidden"
+      data-blume-nav-gesture-zone
+    ></div>
+  )
+}
+<script src="./mobile-navigation.ts"></script>

@@ -6,3 +6,99 @@
   --blume-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", monospace;
 }
+
+@media (max-width: 63.999rem) {
+  [data-blume-header] {
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  [data-blume-nav-drawer] {
+    right: 0 !important;
+    left: auto !important;
+    inset-inline-start: auto !important;
+    inset-inline-end: 0 !important;
+    height: calc(100vh - var(--blume-drawer-top, 4rem)) !important;
+    max-height: calc(100vh - var(--blume-drawer-top, 4rem));
+    transform: translate3d(105%, 0, 0) !important;
+    --tw-translate-x: 0px !important;
+    --tw-translate-y: 0px !important;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
+    border-inline-start: 1px solid var(--color-border);
+    border-inline-end: 0;
+    padding-right: max(1.25rem, env(safe-area-inset-right));
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+    box-shadow: -1rem 0 2rem rgb(0 0 0 / 8%);
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+  }
+
+  @supports (height: 100dvh) {
+    [data-blume-nav-drawer] {
+      height: calc(100dvh - var(--blume-drawer-top, 4rem)) !important;
+      max-height: calc(100dvh - var(--blume-drawer-top, 4rem));
+    }
+  }
+
+  :root[data-blume-nav-open] [data-blume-nav-drawer] {
+    transform: translate3d(0, 0, 0) !important;
+  }
+
+  :root[data-blume-nav-dragging] [data-blume-nav-drawer] {
+    transform: translate3d(var(--blume-nav-drag-x, 0), 0, 0) !important;
+    transition: none;
+  }
+
+  :root[data-blume-nav-closing] [data-blume-nav-drawer] {
+    transform: translate3d(105%, 0, 0) !important;
+  }
+
+  body > button[data-blume-nav-toggle] {
+    opacity: var(--blume-nav-overlay-progress, 1);
+    transition: opacity 220ms ease;
+  }
+
+  :root[data-blume-nav-dragging] body > button[data-blume-nav-toggle] {
+    transition: none;
+  }
+
+  [data-blume-nav-gesture-zone] {
+    position: fixed;
+    top: var(--blume-drawer-top, 4rem);
+    right: max(12px, env(safe-area-inset-right));
+    z-index: 25;
+    width: 24px;
+    height: calc(100vh - var(--blume-drawer-top, 4rem));
+    touch-action: pan-y;
+  }
+
+  @supports (height: 100dvh) {
+    [data-blume-nav-gesture-zone] {
+      height: calc(100dvh - var(--blume-drawer-top, 4rem));
+    }
+  }
+
+  :root[data-blume-nav-open] [data-blume-nav-gesture-zone],
+  :root[data-blume-nav-closing] [data-blume-nav-gesture-zone] {
+    pointer-events: none;
+  }
+
+  [data-blume-nav-close-icon] {
+    display: none;
+  }
+
+  :root[data-blume-nav-open] [data-blume-nav-menu-icon] {
+    display: none;
+  }
+
+  :root[data-blume-nav-open] [data-blume-nav-close-icon] {
+    display: inline-flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-blume-nav-drawer],
+  body > button[data-blume-nav-toggle] {
+    transition-duration: 0.01ms;
+  }
+}

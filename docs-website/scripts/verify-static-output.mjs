@@ -7,6 +7,10 @@ const failures = [];
 const videoManifest = JSON.parse(
   readFileSync(resolve("assets/videos/video-manifest.json"), "utf8")
 );
+const mobileNavigationSource = readFileSync(
+  resolve("components/blume/mobile-navigation.ts"),
+  "utf8"
+);
 const landingVideo = videoManifest.assets?.["nobsprompt-demo"];
 
 const fail = (message) => {
@@ -107,6 +111,14 @@ if (!landingVideo) {
 }
 
 const allFiles = walk(dist);
+const compiledCss = allFiles
+  .filter((path) => path.endsWith(".css"))
+  .map((path) => readFileSync(path, "utf8"))
+  .join("\n");
+const compiledJavaScript = allFiles
+  .filter((path) => path.endsWith(".js"))
+  .map((path) => readFileSync(path, "utf8"))
+  .join("\n");
 const forbidden = allFiles
   .map((path) => relative(dist, path))
   .filter(
@@ -132,6 +144,40 @@ const logoLightText = read("logo-light.svg");
 const logoDarkText = read("logo-dark.svg");
 const appleTouchIcon = readBuffer("apple-touch-icon.png");
 const headers = read("_headers");
+
+for (const token of [
+  "[data-blume-nav-gesture-zone]",
+  "safe-area-inset-right",
+  "safe-area-inset-bottom",
+  "100dvh",
+  "touch-action:pan-y",
+  "transform:translate(105%)",
+]) {
+  if (!compiledCss.includes(token)) {
+    fail(`the mobile navigation CSS is missing ${token}`);
+  }
+}
+
+if (
+  !mobileNavigationSource.includes(
+    'document.body.style.overflow = "hidden"'
+  ) ||
+  mobileNavigationSource.includes("root.style.overflow")
+) {
+  fail("mobile navigation must lock body scrolling without breaking sticky UI");
+}
+
+for (const token of [
+  "data-blume-nav-dragging",
+  "data-blume-nav-closing",
+  "pointercancel",
+  "visualViewport",
+  "blume-mobile-navigation",
+]) {
+  if (!compiledJavaScript.includes(token)) {
+    fail(`the mobile navigation controller is missing ${token}`);
+  }
+}
 
 if (!logo.equals(icon)) {
   fail("logo.svg and icon.svg are not byte-identical");
@@ -213,6 +259,14 @@ for (const path of htmlFiles) {
   const author = tags(html, "a").find(
     ({ attributes: value }) => value["data-nobsprompt-author"] === "true"
   );
+  const headerMarkup =
+    html.match(/<header\b[^>]*data-blume-header[\s\S]*?<\/header>/iu)?.[0] ??
+    "";
+  const navigationToggle = tags(headerMarkup, "button").find(({ raw }) =>
+    raw.includes("data-blume-nav-toggle")
+  );
+  const brandPosition = headerMarkup.indexOf("data-nobsprompt-brand");
+  const togglePosition = headerMarkup.indexOf("data-blume-nav-toggle");
 
   if (!title) {
     fail(`${name} has no title`);
@@ -289,6 +343,30 @@ for (const path of htmlFiles) {
     !author.attributes.rel?.split(/\s+/u).includes("author")
   ) {
     fail(`${name} has an invalid creator credit`);
+  }
+  if (
+    !navigationToggle ||
+    navigationToggle.attributes["aria-controls"] !==
+      "blume-mobile-navigation" ||
+    navigationToggle.attributes["aria-expanded"] !== "false" ||
+    !navigationToggle.raw.includes("data-blume-nav-open-label") ||
+    !navigationToggle.raw.includes("data-blume-nav-close-label")
+  ) {
+    fail(`${name} is missing the accessible mobile navigation toggle`);
+  }
+  if (
+    brandPosition < 0 ||
+    togglePosition < 0 ||
+    togglePosition < brandPosition ||
+    !headerMarkup.includes("data-blume-nav-close-icon")
+  ) {
+    fail(`${name} does not place the mobile navigation toggle on the right`);
+  }
+  if (
+    !html.includes('data-blume-nav-gesture-zone') ||
+    (html.match(/data-blume-nav-gesture-zone/gu)?.length ?? 0) !== 1
+  ) {
+    fail(`${name} is missing its single right-edge gesture zone`);
   }
 
   if ((html.match(/<h1\b/giu) ?? []).length !== 1) {
