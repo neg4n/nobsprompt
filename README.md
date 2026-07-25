@@ -17,20 +17,31 @@ putting Git or Node on the foreground rendering path.
 ```
 
 `nbsp` is written in C, links no third-party libraries, requires no daemon or
-special font, and uses an atomic cache for detailed Git status. Use the
-included opinionated prompt as-is, or keep the backend and build the prompt
-yourself.
+special font, and uses an atomic cache for detailed Git status. The current
+optimized arm64 release executable is about 53 KiB. Use the included
+opinionated prompt as-is, or keep the backend and build the prompt yourself.
 
 [Read the documentation](https://nobsprompt.pages.dev) or continue below for
 the shortest route to a working prompt.
 
 ## Quick start
 
-Requirements: macOS, Zsh 5.8 or newer, a C11 compiler, Git, Meson 1.1+, and
-Ninja.
+Requirements: macOS, Zsh 5.8 or newer, a C11 compiler, Git 2.25+, Meson 1.1+,
+and Ninja.
 
 ```sh
-make test
+git clone --depth 1 --filter=blob:none --sparse --no-tags https://github.com/neg4n/nobsprompt.git && cd nobsprompt && git sparse-checkout set src tools tests doc docs
+```
+
+This skips the website project and videos. For the complete repository, use
+`git clone https://github.com/neg4n/nobsprompt.git && cd nobsprompt` instead.
+
+Before building, review the exact commit you checked out. The
+[installation guide](https://nobsprompt.pages.dev/get-started) provides a
+copyable, evidence-focused audit prompt for an AI coding agent. AI review can
+improve visibility, but it cannot prove that software is safe.
+
+```sh
 make install
 ```
 
@@ -42,8 +53,8 @@ NVM initialization:
 
 | Use | Zsh setup | Presentation |
 | --- | --- | --- |
-| Ready-made prompt | `eval "$(nbsp init zsh)"` | Fixed by `nbsp` |
-| Custom prompt | `eval "$(nbsp init zsh --detached)"` | Owned by your Zsh code |
+| Opinionated prompt | `eval "$(nbsp init zsh)"` | Fixed by `nbsp` |
+| Detached mode | `eval "$(nbsp init zsh --detached)"` | Owned by your Zsh code |
 
 For a default local install:
 
@@ -67,7 +78,7 @@ are deliberately fixed. See the
 [opinionated prompt guide](https://nobsprompt.pages.dev/get-started/opinionated-prompt)
 for its complete behavior.
 
-### Custom prompt backend
+### Detached mode
 
 Detached mode installs the same timing, job tracking, asynchronous refresh,
 redraw, and external-editor integration, but never reads or writes `PROMPT` or
@@ -88,28 +99,7 @@ print -r -- "${NBSP_DATA[node_version]}"
 Register a callback to rebuild your prompt whenever fresh data arrives. Use
 `nbsp_prompt_escape` before inserting dynamic values into Zsh prompt strings.
 
-For other consumers, the same facts are available without Zsh integration:
-
-```console
-$ nbsp data
-schema_version=1
-cwd=/Users/example/project
-path=/U/e/project
-status=0
-duration_ms=0
-jobs=0
-node_version=22.14.0
-git_present=1
-git_valid=1
-git_branch=main
-...
-```
-
-The readable format percent-encodes exceptional bytes. Use
-`nbsp data --format nul` for lossless machine parsing. Never `eval` data
-output.
-
-The [custom prompt guide](https://nobsprompt.pages.dev/custom-prompts) includes
+The [detached mode guide](https://nobsprompt.pages.dev/detached-mode) includes
 the complete schema and lifecycle, safe parsing rules, and practical layouts
 from portable one-line prompts to right-side metadata, Nerd Font styling,
 prompt substitution, and OSC terminal titles.
@@ -123,6 +113,10 @@ The branch is read directly from `.git/HEAD`. Detailed status is produced by
 `git status --porcelain=v2` in a background process, published through an
 atomic cache, and picked up by ZLE on redraw. The first prompt in a repository
 can therefore show a branch before its counters arrive.
+
+The same collector is available to tooling through the versioned
+[`nbsp data` protocol](https://nobsprompt.pages.dev/reference/data-protocol),
+with percent-encoded line records and a lossless NUL format.
 
 There is no daemon, database, configuration language, or prompt-format parser.
 The built-in prompt owns presentation; detached consumers receive data and own
@@ -166,8 +160,9 @@ zsh bench/benchmark.zsh ./build/nbsp data
 ```
 
 [Performance and memory](https://nobsprompt.pages.dev/internals/performance)
-contains measured latency and memory results, the hot-path audit, sanitizer
-and fuzzing coverage, and the evaluation of more complex alternatives.
+contains the measured 53 KiB arm64 release size, latency and memory results,
+the hot-path audit, sanitizer and fuzzing coverage, and the evaluation of more
+complex alternatives.
 
 ## Development
 

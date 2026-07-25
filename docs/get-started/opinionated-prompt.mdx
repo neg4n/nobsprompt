@@ -3,7 +3,7 @@ title: Opinionated prompt
 description: Understand the fixed nobsprompt layout, when each segment appears, how failures render, and which shell behaviors are included.
 ---
 
-Initialize the ready-made prompt in `~/.zshrc`:
+Initialize the opinionated prompt in `~/.zshrc`:
 
 ```zsh
 eval "$(nbsp init zsh)"
@@ -67,13 +67,13 @@ presentation settings. Use detached mode for presentation changes.
 
 ## Shared shell behavior
 
-The ready-made and detached modes use the same Zsh lifecycle for timing, jobs,
+The opinionated and detached modes use the same Zsh lifecycle for timing, jobs,
 asynchronous Git refresh, redraw correction, and external editing with
 `Alt+E`. With vi, vim, or nvim, the editor cursor position is restored when the
 command returns to Zsh.
 
 <CardGroup cols={2}>
-  <Card title="Build a custom prompt" href="/custom-prompts" icon="code">
+  <Card title="Detached mode" href="/detached-mode" icon="code">
     Own the presentation while keeping the same backend.
   </Card>
   <Card title="External editor" href="/reference/external-editor" icon="edit">

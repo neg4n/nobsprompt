@@ -1,11 +1,11 @@
 ---
 title: nobsprompt
-description: Run an extremely lightweight macOS and Zsh prompt out of the box, or use its fast backend to build a custom prompt.
+description: Run an extremely lightweight macOS and Zsh prompt out of the box, or use its detached backend to build your own without foreground Git or Node work.
 ---
 
 `nobsprompt`, the No BS prompt, collects useful shell and repository state
-without putting Git or Node on the foreground rendering path. Use the included
-prompt as-is, or use the same backend to build your own.
+without putting Git or Node on the foreground rendering path. Use the
+opinionated prompt as-is, or use detached mode to build your own.
 
 ```text
 /U/i/D/p/nobsprompt [main +1 ~2 ?3 ^1] [node:22.14.0] [2.4s] [jobs:2] %
@@ -28,50 +28,25 @@ prompt as-is, or use the same backend to build your own.
 `nbsp` is written in C, links no third-party libraries, requires no daemon or
 special font, and keeps detailed Git status in an atomic cache.
 
+Start with the [installation guide](/get-started), then choose the integration
+that fits your prompt.
+
 <CardGroup cols={2}>
-  <Card title="Use the built-in prompt" href="/get-started" icon="terminal">
+  <Card title="Opinionated prompt" href="/get-started/opinionated-prompt" icon="terminal">
     Install one deliberately fixed prompt with path, Git, Node, timing, jobs,
     and exact failure status.
   </Card>
-  <Card title="Build a custom prompt" href="/custom-prompts" icon="code">
+  <Card title="Detached mode" href="/detached-mode" icon="code">
     Keep the fast backend and asynchronous lifecycle while owning every
     presentation decision.
   </Card>
 </CardGroup>
 
-## Start in two commands
-
-```sh
-make test
-make install
-```
-
-Then add one integration to `~/.zshrc` after NVM initialization:
-
-<Tabs param="mode">
-  <Tab title="Opinionated prompt">
-
-  ```zsh
-  export PATH="$HOME/.local/bin:$PATH"
-  eval "$(nbsp init zsh)"
-  ```
-
-  </Tab>
-  <Tab title="Custom prompt backend">
-
-  ```zsh
-  export PATH="$HOME/.local/bin:$PATH"
-  eval "$(nbsp init zsh --detached)"
-  ```
-
-  </Tab>
-</Tabs>
-
-Open a new terminal or run `exec zsh`.
-
-## What the backend provides
+## Features
 
 - an abbreviated working directory;
+- a single executable measuring about 53 KiB in the current optimized arm64
+  release build, documented in [Performance and memory](/internals/performance);
 - Git branch and staged, modified, untracked, conflicted, ahead, behind, and
   stash counts;
 - the active NVM version without starting Node;
@@ -84,7 +59,7 @@ Open a new terminal or run `exec zsh`.
 ## What it deliberately avoids
 
 There is no daemon, database, format language, plugin system, font requirement,
-or foreground Git process. The ready-made prompt is intentionally fixed.
+or foreground Git process. The opinionated prompt is intentionally fixed.
 Detached mode exists for users who want different colors, symbols, layout,
 segments, thresholds, or OSC wrappers.
 

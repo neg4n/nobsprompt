@@ -1,5 +1,5 @@
 ---
-title: Custom prompts
+title: Detached mode
 description: Build a custom Zsh prompt from NBSP_DATA while nobsprompt handles fast data collection, asynchronous refresh, and redraw.
 ---
 
@@ -16,24 +16,11 @@ as two customized layouts. Include a background Git refresh updating counters
 without blocking input.
 :::
 
-Use exactly one integration in a shell:
+Initialize detached mode in `~/.zshrc`:
 
-<Tabs param="mode">
-  <Tab title="Custom prompt backend">
-
-  ```zsh
-  eval "$(nbsp init zsh --detached)"
-  ```
-
-  </Tab>
-  <Tab title="Ready-made prompt">
-
-  ```zsh
-  eval "$(nbsp init zsh)"
-  ```
-
-  </Tab>
-</Tabs>
+```zsh
+eval "$(nbsp init zsh --detached)"
+```
 
 The first mode initialized in a shell wins. Put initialization after NVM setup
 so `node_version` reflects the active version.
@@ -93,11 +80,11 @@ The backend owns:
 - external command editing.
 
 <CardGroup cols={2}>
-  <Card title="Data and lifecycle" href="/custom-prompts/data-lifecycle" icon="database">
+  <Card title="Data and lifecycle" href="/detached-mode/data-lifecycle" icon="database">
     Read the complete schema, first-refresh behavior, escaping rules, and
     callback contract.
   </Card>
-  <Card title="Prompt recipes" href="/custom-prompts/recipes" icon="layers">
+  <Card title="Prompt recipes" href="/detached-mode/recipes" icon="layers">
     Adapt complete one-line, two-line, right-side, Nerd Font, and OSC examples.
   </Card>
 </CardGroup>

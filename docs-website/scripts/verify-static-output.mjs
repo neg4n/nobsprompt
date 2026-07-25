@@ -11,6 +11,19 @@ const mobileNavigationSource = readFileSync(
   resolve("components/blume/mobile-navigation.ts"),
   "utf8"
 );
+const movedDocumentation = [
+  ["/custom-prompts", "/detached-mode"],
+  ["/custom-prompts/data-lifecycle", "/detached-mode/data-lifecycle"],
+  ["/custom-prompts/recipes", "/detached-mode/recipes"],
+  ["/custom-prompts/direct-data", "/reference/data-protocol"],
+];
+const expectedRedirects = movedDocumentation.flatMap(([from, to]) =>
+  ["", ".md", ".mdx"].map((suffix) => ({
+    from: `${from}${suffix}`,
+    status: 301,
+    to: `${to}${suffix}`,
+  }))
+);
 const landingVideo = videoManifest.assets?.["nobsprompt-demo"];
 
 const fail = (message) => {
@@ -82,17 +95,23 @@ for (const path of [
   "index.html",
   "robots.txt",
   "sitemap.xml",
+  "blume-search.json",
   "llms.txt",
   "llms-full.txt",
   "agent-readability.json",
   "index.md",
   "index.mdx",
+  "get-started.md",
+  "detached-mode/data-lifecycle.md",
+  "reference/data-protocol.md",
   "logo.svg",
   "icon.svg",
   "logo-light.svg",
   "logo-dark.svg",
   "apple-touch-icon.png",
   "_headers",
+  "_redirects",
+  "blume-redirects.json",
 ]) {
   requireFile(path, path.startsWith("llms") ? 100 : 1);
 }
@@ -132,8 +151,18 @@ if (forbidden.length > 0) {
   fail(`server artifacts were generated: ${forbidden.join(", ")}`);
 }
 
+const isRedirectHtml = (path) =>
+  tags(readFileSync(path, "utf8"), "meta").some(
+    ({ attributes: value }) => value["http-equiv"]?.toLowerCase() === "refresh"
+  );
+const redirectHtmlFiles = allFiles.filter(
+  (path) => path.endsWith(".html") && isRedirectHtml(path)
+);
 const htmlFiles = allFiles.filter(
-  (path) => path.endsWith(".html") && relative(dist, path) !== "404.html"
+  (path) =>
+    path.endsWith(".html") &&
+    relative(dist, path) !== "404.html" &&
+    !isRedirectHtml(path)
 );
 const canonicalUrls = new Set();
 
@@ -144,6 +173,22 @@ const logoLightText = read("logo-light.svg");
 const logoDarkText = read("logo-dark.svg");
 const appleTouchIcon = readBuffer("apple-touch-icon.png");
 const headers = read("_headers");
+const redirectRules = read("_redirects");
+const redirectManifest = JSON.parse(read("blume-redirects.json"));
+
+if (JSON.stringify(redirectManifest) !== JSON.stringify(expectedRedirects)) {
+  fail("the redirect manifest does not match the documentation route migration");
+}
+for (const { from, status, to } of expectedRedirects) {
+  if (!redirectRules.split("\n").includes(`${from} ${to} ${status}`)) {
+    fail(`_redirects is missing ${from} -> ${to}`);
+  }
+}
+if (redirectHtmlFiles.length !== expectedRedirects.length) {
+  fail(
+    `expected ${expectedRedirects.length} static redirect pages, found ${redirectHtmlFiles.length}`
+  );
+}
 
 for (const token of [
   "[data-blume-nav-gesture-zone]",
@@ -384,6 +429,188 @@ for (const path of htmlFiles) {
 }
 
 const homepage = read("index.html");
+const homepageMarkdown = read("index.md");
+const getStarted = read("get-started/index.html");
+const getStartedMarkdown = read("get-started.md");
+const dataLifecycleMarkdown = read("detached-mode/data-lifecycle.md");
+const dataProtocolMarkdown = read("reference/data-protocol.md");
+const sparseSelection = "git sparse-checkout set src tools tests doc docs";
+const normalizedGetStartedMarkdown = getStartedMarkdown.replace(/\s+/gu, " ");
+
+for (const [name, content] of [["get-started.md", getStartedMarkdown]]) {
+  if (
+    !content.includes("git clone --depth 1 --filter=blob:none --sparse --no-tags") ||
+    !content.includes(sparseSelection) ||
+    !content.includes("make install")
+  ) {
+    fail(`${name} is missing the partial-clone installation flow`);
+  }
+  if (content.includes("make test")) {
+    fail(`${name} includes the maintainer test command in the user quickstart`);
+  }
+  if (/git sparse-checkout set[^\n<]*docs-website/iu.test(content)) {
+    fail(`${name} includes docs-website in the sparse checkout`);
+  }
+}
+if (
+  homepageMarkdown.includes("git clone --depth 1") ||
+  homepageMarkdown.includes("make install") ||
+  homepageMarkdown.includes("## Install from source")
+) {
+  fail("the homepage contains installation instructions reserved for get-started");
+}
+if (
+  !getStartedMarkdown.includes(
+    "git clone https://github.com/neg4n/nobsprompt.git && cd nobsprompt"
+  )
+) {
+  fail("get-started is missing the full-clone alternative");
+}
+
+const clonePosition = getStartedMarkdown.indexOf("git clone --depth 1");
+const auditPosition = getStartedMarkdown.indexOf("Review the exact source");
+const installPosition = getStartedMarkdown.lastIndexOf("make install");
+if (
+  clonePosition < 0 ||
+  auditPosition <= clonePosition ||
+  installPosition <= auditPosition
+) {
+  fail("get-started does not place source review between clone and install");
+}
+if (
+  (getStarted.match(/<blume-prompt\b/gu)?.length ?? 0) !== 1 ||
+  !getStarted.includes('aria-label="Copy prompt"') ||
+  !getStarted.includes("data-blume-prompt-copy") ||
+  !getStarted.includes("data-blume-prompt-content hidden") ||
+  !getStarted.includes("Treat this checkout as untrusted") ||
+  !compiledJavaScript.includes("navigator.clipboard.writeText")
+) {
+  fail("get-started is missing its functional copyable source-audit prompt");
+}
+for (const token of [
+  "Treat this checkout as untrusted",
+  "Trace the complete `make install` control flow",
+  "cryptocurrency mining behavior",
+  "Do not claim proof of safety",
+]) {
+  if (!normalizedGetStartedMarkdown.includes(token)) {
+    fail(`agent-facing get-started Markdown is missing: ${token}`);
+  }
+}
+if (
+  !homepageMarkdown.includes("## Features") ||
+  !homepageMarkdown.includes("53 KiB") ||
+  homepageMarkdown.includes("## What the backend provides")
+) {
+  fail("the homepage does not present the revised Features section");
+}
+for (const token of [
+  "`path` is the abbreviated display path",
+  'nbsp_prompt_escape "${NBSP_DATA[cwd]}"',
+  "comes from `getcwd(3)`",
+  "do not call `realpath`",
+  "logical, symlink-preserving path",
+]) {
+  if (!dataLifecycleMarkdown.includes(token)) {
+    fail(`detached path guidance is missing: ${token}`);
+  }
+}
+for (const token of [
+  "`cwd` is the full physical working directory",
+  "`path` is its abbreviated",
+  "`NBSP_DATA[cwd]`",
+  "do not need to start `realpath`",
+]) {
+  if (!dataProtocolMarkdown.includes(token)) {
+    fail(`data protocol path guidance is missing: ${token}`);
+  }
+}
+
+const sidebarMarkup =
+  homepage.match(
+    /<aside\b[^>]*data-blume-nav-drawer[\s\S]*?<\/aside>/iu
+  )?.[0] ?? "";
+const sidebarLabels = [
+  ...sidebarMarkup.matchAll(/<span\b[^>]*>([^<]+)<\/span>/giu),
+].map((match) => match[1].trim());
+const expectedSidebarLabels = [
+  "nobsprompt",
+  "Get started",
+  "Opinionated prompt",
+  "Detached mode",
+  "Data and lifecycle",
+  "Prompt recipes",
+  "Internals",
+  "Performance and memory",
+  "Reference",
+  "CLI reference",
+  "Data protocol",
+  "Configuration",
+  "External command editor",
+];
+
+if (JSON.stringify(sidebarLabels) !== JSON.stringify(expectedSidebarLabels)) {
+  fail(
+    `the sidebar hierarchy is unexpected: ${JSON.stringify(sidebarLabels)}`
+  );
+}
+
+const sidebarLinks = [
+  ...sidebarMarkup.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/giu),
+].map((match) => ({
+  href: attributes(match[1]).href,
+  label: match[2].replace(/<[^>]+>/gu, " ").replace(/\s+/gu, " ").trim(),
+}));
+for (const [label, href] of [
+  ["Get started", "/get-started"],
+  ["Detached mode", "/detached-mode"],
+  ["Internals", "/internals"],
+]) {
+  const links = sidebarLinks.filter((link) => link.label === label);
+  if (links.length !== 1 || links[0].href !== href) {
+    fail(`${label} must appear once as a linked section heading`);
+  }
+}
+
+const crawlerArtifacts = {
+  "agent-readability.json": read("agent-readability.json"),
+  "blume-search.json": read("blume-search.json"),
+  "llms-full.txt": read("llms-full.txt"),
+  "llms.txt": read("llms.txt"),
+  "sitemap.xml": read("sitemap.xml"),
+};
+for (const [name, content] of Object.entries(crawlerArtifacts)) {
+  if (content.includes("/custom-prompts")) {
+    fail(`${name} contains a retired custom-prompts route`);
+  }
+}
+const routeBearingArtifacts = {
+  "blume-search.json": crawlerArtifacts["blume-search.json"],
+  "llms-full.txt": crawlerArtifacts["llms-full.txt"],
+  "llms.txt": crawlerArtifacts["llms.txt"],
+  "sitemap.xml": crawlerArtifacts["sitemap.xml"],
+};
+for (const route of [
+  "/detached-mode",
+  "/detached-mode/data-lifecycle",
+  "/detached-mode/recipes",
+  "/reference/data-protocol",
+]) {
+  for (const [name, content] of Object.entries(routeBearingArtifacts)) {
+    if (!content.includes(route)) {
+      fail(`${name} is missing ${route}`);
+    }
+  }
+}
+if (
+  !crawlerArtifacts["llms.txt"].includes("## Detached mode") ||
+  !crawlerArtifacts["llms.txt"].includes("## Reference") ||
+  crawlerArtifacts["llms.txt"].includes("Custom prompts") ||
+  crawlerArtifacts["llms.txt"].includes("Direct data output")
+) {
+  fail("llms.txt does not present the revised prompt-mode hierarchy");
+}
+
 const optimizedVideos = [
   ...homepage.matchAll(/<optimized-video\b[\s\S]*?<\/optimized-video>/giu),
 ];

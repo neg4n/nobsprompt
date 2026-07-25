@@ -46,6 +46,20 @@ not hidden or redirected.
 | `git_behind` | Commits behind upstream |
 | `git_stashes` | Stash count |
 
+:::tip
+`path` is the abbreviated display path. For the full physical working
+directory, escape `cwd` inside your callback:
+
+```zsh
+nbsp_prompt_escape "${NBSP_DATA[cwd]}"
+full_path=$REPLY
+```
+
+The `cwd` value comes from `getcwd(3)`, so do not call `realpath` from the
+callback and add an unnecessary foreground process. Use Zsh's `$PWD` instead
+only when you specifically want its logical, symlink-preserving path.
+:::
+
 Consumers should require a schema version they understand, address records by
 key rather than position, and ignore unknown keys added by a compatible future
 version.
@@ -114,5 +128,5 @@ Detached mode leaves terminal control sequences under your ownership. It
 updates `NBSP_DATA` and requests a redraw, but does not replace or interpret
 OSC wrappers in your prompt.
 
-See [Prompt recipes](/custom-prompts/recipes#terminal-title-and-osc-wrapper) for
+See [Prompt recipes](/detached-mode/recipes#terminal-title-and-osc-wrapper) for
 a complete terminal-title example.

@@ -1,10 +1,10 @@
 ---
-title: Direct data output
-description: Consume the versioned nbsp data protocol directly, parse its line or NUL format safely, and collect facts without starting Git.
+title: Data protocol
+description: Reference the versioned nbsp data protocol, its line and NUL formats, safe parsing rules, and command metadata.
 ---
 
-`nbsp data` exposes the same cache-only facts without installing the Zsh
-integration. It never starts Git.
+`nbsp data` serializes the same cache-only facts that power nobsprompt. It never
+starts Git.
 
 ## Readable line format
 
@@ -22,6 +22,10 @@ git_valid=1
 git_branch=main
 ...
 ```
+
+`cwd` is the full physical working directory and `path` is its abbreviated
+display form. Detached callbacks can render `NBSP_DATA[cwd]` after passing it
+through `nbsp_prompt_escape`; they do not need to start `realpath`.
 
 The default output is a versioned sequence of `key=value` records. Values use
 percent encoding, so common values remain readable while spaces, newlines,
@@ -66,10 +70,10 @@ nbsp data --status 127 --duration-ms 2400 --jobs 2
 | `--format lines` | Percent-encoded line records, the default |
 | `--format nul` | Alternating raw key and value records |
 
-## Direct versus detached use
+## Detached integration
 
-Direct consumers own when to collect data and when to redraw. The detached Zsh
-integration adds:
+Detached mode parses this protocol into the atomic `NBSP_DATA` associative
+array and adds the Zsh lifecycle around it:
 
 - pre-command and pre-prompt lifecycle tracking;
 - command timing and background job collection;
@@ -78,5 +82,5 @@ integration adds:
 - callback execution;
 - automatic ZLE redraw.
 
-Use `nbsp data` directly for another shell, a status line, inspection, or a
-consumer with its own lifecycle. Use detached mode for a custom Zsh prompt.
+See [Data and lifecycle](/detached-mode/data-lifecycle) for the `NBSP_DATA`
+schema, callbacks, prompt escaping, and first-refresh behavior.

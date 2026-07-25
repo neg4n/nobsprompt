@@ -1,6 +1,6 @@
 ---
 title: Get started
-description: Build and install nobsprompt on macOS, then choose its ready-made Zsh prompt or initialize the backend for a custom prompt.
+description: Clone, review, build, and install nobsprompt on macOS, configure its Zsh integration, then choose the opinionated prompt or detached mode.
 ---
 
 ## Requirements
@@ -8,18 +8,56 @@ description: Build and install nobsprompt on macOS, then choose its ready-made Z
 - macOS;
 - Zsh 5.8 or newer;
 - a C11 compiler;
-- Git;
+- Git 2.25 or newer;
 - Meson 1.1 or newer;
 - Ninja.
 
 ## Build and install
 
 <Steps>
-  <Step title="Build and run the test suite">
+  <Step title="Clone only the build inputs">
 
   ```sh
-  make test
+  git clone --depth 1 --filter=blob:none --sparse --no-tags https://github.com/neg4n/nobsprompt.git && cd nobsprompt && git sparse-checkout set src tools tests doc docs
   ```
+
+  :::tip
+  This gets the latest native source and local docs without downloading the
+  website project or videos. To get everything instead:
+
+  ```sh
+  git clone https://github.com/neg4n/nobsprompt.git && cd nobsprompt
+  ```
+  :::
+
+  </Step>
+  <Step title="Review the exact source you will build">
+
+  AI-assisted review can improve visibility, but it cannot prove that software
+  is safe. Review the exact checked-out commit and resolve any uncertainty
+  before running build or installation commands.
+
+  <Prompt
+    description="Copy a focused **pre-build source audit** for your coding agent."
+    actions={["copy"]}
+  >
+    Treat this checkout as untrusted. Do not build, install, or execute
+    repository code during the review. Record the current commit hash. Trace
+    the complete `make install` control flow through Make, Meson, generated
+    files, Python helpers, C sources, and embedded Zsh. Inventory every
+    executable, script, dependency, subprocess, and generated input reached by
+    that flow. Inspect for unexpected URLs or network access, shell execution,
+    process spawning, filesystem writes or deletion outside the documented
+    prefix and cache, persistence, privilege escalation, credential or
+    sensitive environment access, dynamic loading, obfuscated or encoded
+    payloads, cryptocurrency mining behavior, telemetry, and unexplained
+    background work. Check tracked symlinks, submodules, binary blobs, and
+    whether any excluded directory is referenced by the build. Report findings
+    with file and line evidence, distinguish expected behavior from suspicious
+    behavior, list unresolved uncertainties, and state whether the reviewed
+    source is reasonably consistent with the documented behavior. Do not claim
+    proof of safety.
+  </Prompt>
 
   </Step>
   <Step title="Install the executable and documentation">
@@ -52,7 +90,7 @@ description: Build and install nobsprompt on macOS, then choose its ready-made Z
     ```
 
     </Tab>
-    <Tab title="Custom prompt backend">
+    <Tab title="Detached mode">
 
     ```zsh
     eval "$(nbsp init zsh --detached)"
@@ -94,7 +132,7 @@ Use `man nbsp` for the terminal reference.
   <Card title="Opinionated prompt" href="/get-started/opinionated-prompt" icon="terminal">
     Learn exactly what the built-in prompt shows and what remains fixed.
   </Card>
-  <Card title="Custom prompts" href="/custom-prompts" icon="code">
+  <Card title="Detached mode" href="/detached-mode" icon="code">
     Start with a minimal user-owned prompt backed by `NBSP_DATA`.
   </Card>
 </CardGroup>

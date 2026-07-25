@@ -78,11 +78,10 @@ install_data(
   install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt', 'get-started'),
 )
 install_data(
-  'docs/custom-prompts/index.mdx',
-  'docs/custom-prompts/data-lifecycle.mdx',
-  'docs/custom-prompts/recipes.mdx',
-  'docs/custom-prompts/direct-data.mdx',
-  install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt', 'custom-prompts'),
+  'docs/detached-mode/index.mdx',
+  'docs/detached-mode/data-lifecycle.mdx',
+  'docs/detached-mode/recipes.mdx',
+  install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt', 'detached-mode'),
 )
 install_data(
   'docs/internals/index.mdx',
@@ -91,6 +90,7 @@ install_data(
 )
 install_data(
   'docs/reference/cli.mdx',
+  'docs/reference/data-protocol.mdx',
   'docs/reference/configuration.mdx',
   'docs/reference/external-editor.mdx',
   install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt', 'reference'),
