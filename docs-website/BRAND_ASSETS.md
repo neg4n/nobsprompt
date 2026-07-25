@@ -17,8 +17,9 @@ inlined in the documentation header.
 
 The source view box is 2048 by 2048. The paths are fitted to all four edges
 instead of carrying internal canvas padding. The foreground and green paths
-share one preserved transform, keeping their common edge aligned without
-changing either path's width.
+share one preserved transform. The foreground stops beneath the green cap's
+outer edges and slightly overprints their internal color boundary, preventing
+dark outer fringes or light seams when the vector is rasterized at small sizes.
 
 ## Updating the logo
 
