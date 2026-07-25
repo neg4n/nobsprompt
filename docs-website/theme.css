@@ -23,13 +23,16 @@
     --tw-translate-x: 0px !important;
     --tw-translate-y: 0px !important;
     touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
     overscroll-behavior-y: contain;
     border-inline-start: 1px solid var(--color-border);
     border-inline-end: 0;
     padding-right: max(1.25rem, env(safe-area-inset-right));
     padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
     box-shadow: -1rem 0 2rem rgb(0 0 0 / 8%);
-    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: transform var(--blume-nav-settle-ms, 220ms)
+      cubic-bezier(0.22, 1, 0.36, 1);
     will-change: transform;
   }
 
@@ -55,7 +58,10 @@
 
   body > button[data-blume-nav-toggle] {
     opacity: var(--blume-nav-overlay-progress, 1);
-    transition: opacity 220ms ease;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: opacity var(--blume-nav-settle-ms, 220ms) ease;
   }
 
   :root[data-blume-nav-dragging] body > button[data-blume-nav-toggle] {
@@ -65,11 +71,13 @@
   [data-blume-nav-gesture-zone] {
     position: fixed;
     top: var(--blume-drawer-top, 4rem);
-    right: max(12px, env(safe-area-inset-right));
+    right: 0;
     z-index: 25;
-    width: 24px;
+    width: max(32px, env(safe-area-inset-right));
     height: calc(100vh - var(--blume-drawer-top, 4rem));
     touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   @supports (height: 100dvh) {

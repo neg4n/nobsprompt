@@ -18,16 +18,25 @@ const DIRECTION_LOCK_PX = 8;
 const MINIMUM_TRAVEL_PX = 24;
 const DIRECTION_RATIO = 1.25;
 const PROJECTION_MS = 180;
-const SETTLE_MS = 220;
+const VELOCITY_WINDOW_MS = 80;
+const MINIMUM_SETTLE_MS = 120;
+const MAXIMUM_SETTLE_MS = 220;
+const MINIMUM_SETTLE_VELOCITY = 0.6;
+const CLICK_SUPPRESSION_MS = 500;
+
+interface VelocitySample {
+  time: number;
+  x: number;
+}
 
 interface DragState {
   active: boolean;
   initialOpen: boolean;
-  lastTime: number;
-  lastX: number;
   pointerId: number;
+  samples: VelocitySample[];
   source: HTMLElement;
   startX: number;
+  startTranslation: number;
   startY: number;
   translation: number;
   velocityX: number;
@@ -38,12 +47,31 @@ let drag: DragState | undefined;
 let frame: number | undefined;
 let headerFrame: number | undefined;
 let closeTimer: number | undefined;
-let suppressDrawerClick = false;
+let clickSuppressionTimer: number | undefined;
+let suppressedClickSurface: HTMLElement | undefined;
 let locked = false;
 let previousBodyOverflow = "";
 let returnFocus: HTMLElement | null = null;
 
 const isOpen = () => root.hasAttribute("data-blume-nav-open");
+
+const clamp = (value: number, minimum: number, maximum: number) =>
+  Math.max(minimum, Math.min(maximum, value));
+
+const clearClickSuppression = () => {
+  window.clearTimeout(clickSuppressionTimer);
+  clickSuppressionTimer = undefined;
+  suppressedClickSurface = undefined;
+};
+
+const suppressNextClickFrom = (surface: HTMLElement) => {
+  clearClickSuppression();
+  suppressedClickSurface = surface;
+  clickSuppressionTimer = window.setTimeout(
+    clearClickSuppression,
+    CLICK_SUPPRESSION_MS
+  );
+};
 
 const updateToggle = (open: boolean) => {
   if (!toggle) {
@@ -100,6 +128,13 @@ const clearDragStyles = () => {
   root.style.removeProperty("--blume-nav-overlay-progress");
 };
 
+const setSettleDuration = (duration: number) => {
+  root.style.setProperty(
+    "--blume-nav-settle-ms",
+    `${Math.max(0, Math.round(duration))}ms`
+  );
+};
+
 const finishClosing = (restoreFocus: boolean) => {
   window.clearTimeout(closeTimer);
   closeTimer = undefined;
@@ -120,10 +155,15 @@ const finishClosing = (restoreFocus: boolean) => {
   returnFocus = null;
 };
 
-const openNavigation = (focusDrawer = false) => {
+const openNavigation = (
+  focusDrawer = false,
+  settleDuration = MAXIMUM_SETTLE_MS
+) => {
   window.clearTimeout(closeTimer);
   closeTimer = undefined;
+  setSettleDuration(settleDuration);
   root.removeAttribute("data-blume-nav-closing");
+  clearDragStyles();
   measureHeader();
   root.setAttribute("data-blume-nav-open", "");
   lockScroll();
@@ -147,14 +187,18 @@ const openNavigation = (focusDrawer = false) => {
 const closeNavigation = ({
   immediate = false,
   restoreFocus = false,
+  settleDuration = MAXIMUM_SETTLE_MS,
 }: {
   immediate?: boolean;
   restoreFocus?: boolean;
+  settleDuration?: number;
 } = {}) => {
   if (!(isOpen() || root.hasAttribute("data-blume-nav-dragging"))) {
     return;
   }
 
+  const duration = immediate ? 0 : settleDuration;
+  setSettleDuration(duration);
   updateToggle(false);
   root.setAttribute("data-blume-nav-closing", "");
   root.removeAttribute("data-blume-nav-dragging");
@@ -167,7 +211,7 @@ const closeNavigation = ({
 
   closeTimer = window.setTimeout(
     () => finishClosing(restoreFocus),
-    SETTLE_MS
+    duration
   );
 };
 
@@ -191,7 +235,92 @@ const scheduleDrag = () => {
   }
 };
 
+const getDrawerTranslation = (width: number) => {
+  if (!drawer) {
+    return isOpen() ? 0 : width;
+  }
+
+  const transform = window.getComputedStyle(drawer).transform;
+  if (transform === "none") {
+    return isOpen() ? 0 : width;
+  }
+
+  try {
+    return clamp(new DOMMatrixReadOnly(transform).m41, 0, width);
+  } catch {
+    const values = transform
+      .slice(transform.indexOf("(") + 1, -1)
+      .split(",")
+      .map(Number);
+    const translation = values?.length === 6 ? values[4] : values?.[12];
+    return clamp(translation ?? (isOpen() ? 0 : width), 0, width);
+  }
+};
+
+const updateVelocity = (event: PointerEvent) => {
+  if (!drag) {
+    return;
+  }
+
+  const coalesced = event.getCoalescedEvents?.() ?? [];
+  const points = [...coalesced];
+  const latest = points.at(-1);
+  if (
+    !latest ||
+    latest.timeStamp !== event.timeStamp ||
+    latest.clientX !== event.clientX
+  ) {
+    points.push(event);
+  }
+
+  for (const point of points) {
+    if (Number.isFinite(point.clientX) && Number.isFinite(point.timeStamp)) {
+      drag.samples.push({ time: point.timeStamp, x: point.clientX });
+    }
+  }
+
+  const newestTime = drag.samples.at(-1)?.time ?? event.timeStamp;
+  while (
+    drag.samples.length > 2 &&
+    drag.samples[1].time < newestTime - VELOCITY_WINDOW_MS
+  ) {
+    drag.samples.shift();
+  }
+
+  const first = drag.samples[0];
+  const last = drag.samples.at(-1);
+  if (first && last && last.time > first.time) {
+    drag.velocityX = (last.x - first.x) / (last.time - first.time);
+  }
+};
+
+const getSettleDuration = (
+  translation: number,
+  targetTranslation: number,
+  velocityX: number,
+  width: number
+) => {
+  if (reducedMotion.matches) {
+    return 0;
+  }
+
+  const remaining = Math.abs(targetTranslation - translation);
+  if (remaining < 1 || width <= 0) {
+    return 0;
+  }
+
+  const distanceDuration = MAXIMUM_SETTLE_MS * (remaining / width);
+  const velocityDuration =
+    remaining / Math.max(Math.abs(velocityX), MINIMUM_SETTLE_VELOCITY);
+  return clamp(
+    Math.min(distanceDuration, velocityDuration),
+    MINIMUM_SETTLE_MS,
+    MAXIMUM_SETTLE_MS
+  );
+};
+
 const beginDrag = (event: PointerEvent, initialOpen: boolean) => {
+  clearClickSuppression();
   if (
     desktop.matches ||
     !event.isPrimary ||
@@ -214,11 +343,11 @@ const beginDrag = (event: PointerEvent, initialOpen: boolean) => {
   drag = {
     active: false,
     initialOpen,
-    lastTime: event.timeStamp,
-    lastX: event.clientX,
     pointerId: event.pointerId,
+    samples: [{ time: event.timeStamp, x: event.clientX }],
     source,
     startX: event.clientX,
+    startTranslation: initialOpen ? 0 : width,
     startY: event.clientY,
     translation: initialOpen ? 0 : width,
     velocityX: 0,
@@ -244,30 +373,30 @@ const moveDrag = (event: PointerEvent) => {
       horizontal <= vertical * DIRECTION_RATIO ||
       (drag.initialOpen ? dx <= 0 : dx >= 0)
     ) {
+      suppressNextClickFrom(drag.source);
       drag = undefined;
       return;
     }
 
+    const currentTranslation = getDrawerTranslation(drag.width);
     drag.active = true;
+    drag.startTranslation = currentTranslation;
+    drag.translation = clamp(currentTranslation + dx, 0, drag.width);
     drag.source.setPointerCapture(event.pointerId);
-    if (!drag.initialOpen) {
-      openNavigation(false);
-    }
+    openNavigation(false);
     root.setAttribute("data-blume-nav-dragging", "");
     root.removeAttribute("data-blume-nav-closing");
+    suppressNextClickFrom(drag.source);
+    applyDrag();
   }
 
   event.preventDefault();
-  const elapsed = Math.max(1, event.timeStamp - drag.lastTime);
-  const instantaneousVelocity = (event.clientX - drag.lastX) / elapsed;
-  drag.velocityX = drag.velocityX * 0.7 + instantaneousVelocity * 0.3;
-  drag.lastX = event.clientX;
-  drag.lastTime = event.timeStamp;
-  drag.translation = Math.max(
+  updateVelocity(event);
+  drag.translation = clamp(
+    drag.startTranslation + dx,
     0,
-    Math.min(drag.width, drag.initialOpen ? dx : drag.width + dx)
+    drag.width
   );
-  suppressDrawerClick = drag.initialOpen;
   scheduleDrag();
 };
 
@@ -282,6 +411,7 @@ const endDrag = (event: PointerEvent, cancelled = false) => {
     frame = undefined;
     applyDrag();
   }
+  drawer?.getBoundingClientRect();
   drag = undefined;
 
   if (!finished.active) {
@@ -305,18 +435,46 @@ const endDrag = (event: PointerEvent, cancelled = false) => {
     cancelled || travelled < MINIMUM_TRAVEL_PX
       ? finished.initialOpen
       : projectedProgress >= 0.5;
+  const settleDuration = getSettleDuration(
+    finished.translation,
+    shouldOpen ? 0 : finished.width,
+    finished.velocityX,
+    finished.width
+  );
 
   if (shouldOpen) {
-    root.removeAttribute("data-blume-nav-dragging");
-    root.style.removeProperty("--blume-nav-drag-x");
-    root.style.removeProperty("--blume-nav-overlay-progress");
-    openNavigation(false);
+    openNavigation(false, settleDuration);
   } else {
-    closeNavigation({ restoreFocus: finished.initialOpen });
+    closeNavigation({
+      restoreFocus: finished.initialOpen,
+      settleDuration,
+    });
   }
 };
 
 const handlePointerCancel = (event: PointerEvent) => endDrag(event, true);
+
+const cancelActiveDrag = () => {
+  if (!drag) {
+    return;
+  }
+
+  const cancelled = drag;
+  drag = undefined;
+  if (frame !== undefined) {
+    cancelAnimationFrame(frame);
+    frame = undefined;
+  }
+  if (cancelled.source.hasPointerCapture(cancelled.pointerId)) {
+    cancelled.source.releasePointerCapture(cancelled.pointerId);
+  }
+
+  if (cancelled.initialOpen) {
+    openNavigation(false, 0);
+  } else {
+    closeNavigation({ immediate: true });
+  }
+};
 
 const attachGestureSurface = (
   surface: HTMLElement | undefined,
@@ -343,24 +501,32 @@ if (drawer && toggle) {
 
   attachGestureSurface(gestureZone ?? undefined, false);
   attachGestureSurface(drawer, true);
+  attachGestureSurface(overlay, true);
+
+  document.addEventListener(
+    "click",
+    (event) => {
+      const target = event.target;
+      if (
+        !suppressedClickSurface ||
+        !(target instanceof Node) ||
+        !suppressedClickSurface.contains(target)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      clearClickSuppression();
+    },
+    true
+  );
 
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) {
       return;
     }
-
-    if (
-      suppressDrawerClick &&
-      drawer.contains(target) &&
-      target.closest("a, button")
-    ) {
-      event.preventDefault();
-      event.stopPropagation();
-      suppressDrawerClick = false;
-      return;
-    }
-    suppressDrawerClick = false;
 
     const themeToggle = target.closest("[data-blume-theme-toggle]");
     if (themeToggle) {
@@ -413,6 +579,7 @@ if (drawer && toggle) {
   });
 
   const handleViewportChange = () => {
+    cancelActiveDrag();
     if (desktop.matches) {
       closeNavigation({ immediate: true });
     }
@@ -425,9 +592,11 @@ if (drawer && toggle) {
   window.visualViewport?.addEventListener("resize", measureHeader);
   window.visualViewport?.addEventListener("scroll", measureHeader);
   window.addEventListener("pagehide", () => {
+    cancelActiveDrag();
     closeNavigation({ immediate: true });
   });
   window.addEventListener("pageshow", () => {
+    cancelActiveDrag();
     closeNavigation({ immediate: true });
     measureHeader();
   });
