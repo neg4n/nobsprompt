@@ -1,0 +1,81 @@
+---
+title: Opinionated prompt
+description: Understand the fixed nobsprompt layout, when each segment appears, how failures render, and which shell behaviors are included.
+---
+
+Initialize the ready-made prompt in `~/.zshrc`:
+
+```zsh
+eval "$(nbsp init zsh)"
+```
+
+The output is one line:
+
+```text
+/U/i/D/p/nobsprompt [main +1 ~2 ?3 ^1] [node:22.14.0] [2.4s] [jobs:2] %
+```
+
+## Segments
+
+The working directory is always visible. Parent segments are abbreviated to
+their first character while the final segment remains intact.
+
+Other segments appear only when they carry useful information:
+
+| Segment | When it appears |
+| --- | --- |
+| Git | Inside a repository with a readable branch or detached commit |
+| Node | `NVM_BIN` contains an active version |
+| Duration | The previous command lasted at least 2 seconds |
+| Jobs | One or more background jobs exist |
+| Failure | The previous command returned a nonzero status |
+
+The Git markers are:
+
+| Marker | Meaning |
+| --- | --- |
+| `+` | Staged paths |
+| `~` | Modified paths |
+| `?` | Untracked paths |
+| `!` | Conflicted paths |
+| `^` | Commits ahead of upstream |
+| `v` | Commits behind upstream |
+| `*` | Stashes |
+
+## Exact failure status
+
+Successful commands leave the prompt character clean. Failures preserve the
+exact status and join it to Zsh's native `%#` prompt character:
+
+```text
+e1%
+e127%
+```
+
+Only the failure state is colored red. Path and Git text use the terminal's
+default foreground rather than assuming a palette slot.
+
+## Fixed presentation
+
+The built-in colors, symbols, segment visibility, two-second duration
+threshold, layout, and `%#` prompt character are not configurable.
+
+:::note
+`NBSP_CACHE_DIR` and `NBSP_GIT_TIMEOUT_MS` are operational controls, not
+presentation settings. Use detached mode for presentation changes.
+:::
+
+## Shared shell behavior
+
+The ready-made and detached modes use the same Zsh lifecycle for timing, jobs,
+asynchronous Git refresh, redraw correction, and external editing with
+`Alt+E`.
+
+<CardGroup cols={2}>
+  <Card title="Build a custom prompt" href="/custom-prompts" icon="code">
+    Own the presentation while keeping the same backend.
+  </Card>
+  <Card title="External editor" href="/reference/external-editor" icon="edit">
+    Configure and use `Alt+E` with vi, vim, nvim, nano, or another editor.
+  </Card>
+</CardGroup>

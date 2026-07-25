@@ -1,0 +1,72 @@
+---
+title: External command editor
+description: Edit the current Zsh command with Alt+E while preserving multiline content, bindings, and Vim cursor position.
+---
+
+Press `Alt+E` to open the current Zsh editing buffer in an external editor.
+Save and close the editor to return the text to the prompt. The command is not
+executed until you press Enter.
+
+Both the ready-made and detached integrations provide this behavior.
+
+:::note
+**Video planned: edit a command without executing it**
+
+Show `Alt+E` opening a multiline command in Vim, a small edit, `:wq`, and the
+buffer returning to Zsh with the cursor restored at the edited position.
+:::
+
+## Choose an editor
+
+The editor is selected in this order:
+
+1. `$VISUAL`;
+2. `$EDITOR`;
+3. `vi`.
+
+Both environment variables can include arguments:
+
+```zsh
+export EDITOR='nvim'
+eval "$(nbsp init zsh)"
+```
+
+Another example:
+
+```zsh
+export VISUAL='nano --linenumbers'
+eval "$(nbsp init zsh --detached)"
+```
+
+The command is split using Zsh's own shell-word parsing rather than executed
+through another shell.
+
+## Buffer behavior
+
+- Empty, single-line, and multiline commands are supported.
+- Saving returns the edited text without executing it.
+- Closing the editor with an error preserves Zsh's editor status behavior.
+- Existing prompt content and terminal output are not redirected or hidden.
+
+## Cursor restoration
+
+With `vi`, `vim`, or `nvim`, `nbsp` records the editor's final line and Unicode
+character column. When the edited text returns to Zsh, the cursor is restored
+to that position when the report is valid.
+
+Other editors, or an invalid cursor report, place the cursor at the end of the
+edited command.
+
+The temporary cursor file is removed after editing, including error paths.
+
+## Existing key bindings
+
+The integration considers the Emacs, Vi insert, and Vi command keymaps. It
+binds `Alt+E` only where that key is currently undefined.
+
+Existing user and plugin bindings are left unchanged.
+
+:::note
+If another plugin already owns `Alt+E`, invoke the `edit-command-line` widget
+through that plugin or bind your preferred key explicitly.
+:::

@@ -1,0 +1,100 @@
+---
+title: Get started
+description: Build and install nobsprompt on macOS, then choose its ready-made Zsh prompt or initialize the backend for a custom prompt.
+---
+
+## Requirements
+
+- macOS;
+- Zsh 5.8 or newer;
+- a C11 compiler;
+- Git;
+- Meson 1.1 or newer;
+- Ninja.
+
+## Build and install
+
+<Steps>
+  <Step title="Build and run the test suite">
+
+  ```sh
+  make test
+  ```
+
+  </Step>
+  <Step title="Install the executable and documentation">
+
+  ```sh
+  make install
+  ```
+
+  The default prefix is `~/.local`. The `PREFIX` make variable can override
+  that location when needed.
+
+  </Step>
+  <Step title="Put nbsp on PATH">
+
+  ```zsh
+  export PATH="$HOME/.local/bin:$PATH"
+  ```
+
+  Add this before the `nbsp` initialization line in `~/.zshrc`. Omit it when
+  `~/.local/bin` is already on `PATH`.
+
+  </Step>
+  <Step title="Choose one integration">
+
+  <Tabs param="mode">
+    <Tab title="Opinionated prompt">
+
+    ```zsh
+    eval "$(nbsp init zsh)"
+    ```
+
+    </Tab>
+    <Tab title="Custom prompt backend">
+
+    ```zsh
+    eval "$(nbsp init zsh --detached)"
+    ```
+
+    </Tab>
+  </Tabs>
+
+  Put initialization after NVM setup so the active `node_version` is detected.
+  The first mode initialized in a shell wins.
+
+  </Step>
+  <Step title="Restart Zsh">
+
+  ```zsh
+  exec zsh
+  ```
+
+  Opening a new terminal has the same effect.
+
+  </Step>
+</Steps>
+
+## Installed files
+
+With the default prefix, installation places:
+
+| File | Location |
+| --- | --- |
+| Executable | `~/.local/bin/nbsp` |
+| Man page | `~/.local/share/man/man1/nbsp.1` |
+| Markdown documentation | `~/.local/share/doc/nobsprompt` |
+
+Use `man nbsp` for the terminal reference.
+
+## Next step
+
+<CardGroup cols={2}>
+  <Card title="Opinionated prompt" href="/get-started/opinionated-prompt" icon="terminal">
+    Learn exactly what the built-in prompt shows and what remains fixed.
+  </Card>
+  <Card title="Custom prompts" href="/custom-prompts" icon="code">
+    Start with a minimal user-owned prompt backed by `NBSP_DATA`.
+  </Card>
+</CardGroup>

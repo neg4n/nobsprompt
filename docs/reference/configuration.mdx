@@ -1,0 +1,81 @@
+---
+title: Configuration
+description: Configure nobsprompt cache storage, Git refresh timeouts, and forced refresh behavior while keeping presentation user-owned.
+---
+
+`nbsp` exposes operational controls only. The built-in prompt has no
+presentation environment variables.
+
+## Cache location
+
+Cache root precedence is:
+
+1. `$NBSP_CACHE_DIR`;
+2. `$XDG_CACHE_HOME/nbsp`;
+3. `~/Library/Caches/nbsp`.
+
+Override the location before initializing the shell integration:
+
+```zsh
+export NBSP_CACHE_DIR="$HOME/Library/Caches/nbsp"
+eval "$(nbsp init zsh)"
+```
+
+The integration exports a nonempty `NBSP_CACHE_DIR` so background refreshes
+use the same root.
+
+Clear cache and lock files owned by `nbsp` with:
+
+```sh
+nbsp cache clear
+```
+
+## Git timeout
+
+`NBSP_GIT_TIMEOUT_MS` bounds each background Git status collection:
+
+```zsh
+export NBSP_GIT_TIMEOUT_MS=1500
+```
+
+The default is 1500 ms. Accepted values range from 50 to 60000 ms. Missing or
+invalid values fall back to the default.
+
+A timeout preserves the last valid snapshot. It does not block foreground
+prompt rendering.
+
+## Forced refresh
+
+```sh
+nbsp refresh --force
+```
+
+`--force` bypasses only the 250 ms duplicate-refresh debounce. It does not
+bypass:
+
+- the per-repository lock;
+- the configured Git timeout;
+- output limits;
+- cache validation;
+- atomic publication.
+
+The Zsh integration uses a forced follow-up when a refresh started before a
+foreground command and a post-command snapshot is still needed.
+
+## Presentation
+
+The opinionated prompt intentionally does not accept settings for:
+
+- colors or symbols;
+- segment visibility;
+- duration threshold;
+- prompt character;
+- one-line, multiline, or right-side layout.
+
+Use [detached mode](/custom-prompts) and ordinary Zsh code for those decisions.
+
+## Repository settings
+
+`nbsp` does not modify repository or global Git configuration. Users with very
+large worktrees can independently evaluate Git's untracked cache or built-in
+FSMonitor.

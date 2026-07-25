@@ -1,0 +1,82 @@
+---
+title: Direct data output
+description: Consume the versioned nbsp data protocol directly, parse its line or NUL format safely, and collect facts without starting Git.
+---
+
+`nbsp data` exposes the same cache-only facts without installing the Zsh
+integration. It never starts Git.
+
+## Readable line format
+
+```console
+$ nbsp data --status 1 --duration-ms 2400 --jobs 2
+schema_version=1
+cwd=/Users/example/project
+path=/U/e/project
+status=1
+duration_ms=2400
+jobs=2
+node_version=22.14.0
+git_present=1
+git_valid=1
+git_branch=main
+...
+```
+
+The default output is a versioned sequence of `key=value` records. Values use
+percent encoding, so common values remain readable while spaces, newlines,
+`%`, `=`, control bytes, and other exceptional bytes remain unambiguous.
+
+Consumers should:
+
+- require a schema version they understand;
+- select records by key rather than position;
+- ignore unknown keys added by a compatible schema;
+- percent-decode values before use;
+- never evaluate the output as shell code.
+
+## Lossless NUL format
+
+`--format nul` emits alternating raw keys and values separated by NUL bytes:
+
+```zsh
+typeset -A data
+while IFS= read -r -d '' key && IFS= read -r -d '' value; do
+  data[$key]=$value
+done < <(nbsp data --format nul)
+```
+
+Command substitution cannot safely preserve NUL delimiters. Parse the records
+from a process substitution, pipe, or file descriptor.
+
+## Command metadata
+
+Direct consumers can provide the same command context used by the Zsh
+integration:
+
+```sh
+nbsp data --status 127 --duration-ms 2400 --jobs 2
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--status N` | Previous command's exact exit status |
+| `--duration-ms N` | Previous command duration in milliseconds |
+| `--jobs N` | Background job count |
+| `--format lines` | Percent-encoded line records, the default |
+| `--format nul` | Alternating raw key and value records |
+
+## Direct versus detached use
+
+Direct consumers own when to collect data and when to redraw. The detached Zsh
+integration adds:
+
+- pre-command and pre-prompt lifecycle tracking;
+- command timing and background job collection;
+- asynchronous `nbsp refresh`;
+- atomic `NBSP_DATA` replacement;
+- callback execution;
+- automatic ZLE redraw.
+
+Use `nbsp data` directly for another shell, a status line, inspection, or a
+consumer with its own lifecycle. Use detached mode for a custom Zsh prompt.

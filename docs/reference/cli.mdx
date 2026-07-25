@@ -1,0 +1,115 @@
+---
+title: CLI reference
+description: Reference every nbsp command and option, including prompt metadata, data formats, refresh controls, Git markers, and exit statuses.
+---
+
+## Synopsis
+
+```text
+nbsp init zsh [--detached]
+nbsp prompt [--status N] [--duration-ms N] [--jobs N]
+nbsp data [--status N] [--duration-ms N] [--jobs N] [--format lines|nul]
+nbsp refresh [--cwd PATH] [--notify] [--force]
+nbsp cache clear
+nbsp --help
+nbsp --version
+```
+
+## `init zsh`
+
+Print Zsh integration code to standard output.
+
+```zsh
+eval "$(nbsp init zsh)"
+```
+
+The default installs the fixed prompt, hooks, asynchronous refresh lifecycle,
+redraw handling, and external editor binding.
+
+```zsh
+eval "$(nbsp init zsh --detached)"
+```
+
+`--detached` installs the same data and redraw lifecycle without modifying
+`PROMPT` or `RPROMPT`. It publishes `NBSP_DATA`,
+`nbsp_data_update_functions`, and `nbsp_prompt_escape`.
+
+## `prompt`
+
+Render the built-in prompt from the current directory, cache, environment, and
+supplied command metadata.
+
+```sh
+nbsp prompt --status 1 --duration-ms 2400 --jobs 2
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--status N` | Previous command's exact exit status |
+| `--duration-ms N` | Previous command duration in milliseconds |
+| `--jobs N` | Background job count |
+
+The command never starts Git or Node.
+
+## `data`
+
+Serialize the same cache-only facts for a custom consumer:
+
+```sh
+nbsp data --status 1 --duration-ms 2400 --jobs 2
+```
+
+`--format lines` is the default and emits percent-encoded `key=value` records.
+`--format nul` emits alternating raw key and value records separated by NUL
+bytes.
+
+Neither format starts Git. See [Direct data output](/custom-prompts/direct-data)
+for the schema and safe parsing examples.
+
+## `refresh`
+
+Collect and publish detailed Git status for one directory:
+
+```sh
+nbsp refresh --cwd "$PWD"
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--cwd PATH` | Directory to inspect instead of the current directory |
+| `--notify` | Write a newline when the worker completes |
+| `--force` | Bypass only the 250 ms duplicate-refresh debounce |
+
+The Zsh integration normally runs this command asynchronously. `--force` does
+not bypass locking, timeout, validation, or atomic cache publication.
+
+## `cache clear`
+
+Remove cache and lock files owned by `nbsp`:
+
+```sh
+nbsp cache clear
+```
+
+## Git markers
+
+| Marker | Meaning |
+| --- | --- |
+| `+` | Staged paths |
+| `~` | Modified paths |
+| `?` | Untracked paths |
+| `!` | Conflicted paths |
+| `^` | Commits ahead of upstream |
+| `v` | Commits behind upstream |
+| `*` | Stashes |
+
+## Process exit status
+
+| Status | Meaning |
+| --- | --- |
+| `0` | Success |
+| `1` | Operational, serialization, refresh, or cache failure |
+| `2` | Invalid command-line usage |
+
+Optional prompt context failures do not prevent a prompt from being rendered.
+For example, absence of a repository or active NVM version is normal.

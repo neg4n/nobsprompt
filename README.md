@@ -1,18 +1,22 @@
 # nobsprompt
 
-**nobsprompt**, the No BS prompt (or `nbsp`), is an extremely lightweight prompt
-backend for macOS and Zsh. It collects useful shell and repository state without
-putting Git or Node on the foreground rendering path. Use the included
-opinionated prompt as-is, or use the same backend to build your own.
+**nobsprompt**, the No BS prompt, is an extremely lightweight prompt backend
+for macOS and Zsh. It collects useful shell and repository state without
+putting Git or Node on the foreground rendering path.
 
 ```text
 /U/i/D/p/nobsprompt [main +1 ~2 ?3 ^1] [node:22.14.0] [2.4s] [jobs:2] %
 ```
 
 `nbsp` is written in C, links no third-party libraries, requires no daemon or
-special font, and uses an atomic cache for detailed Git status.
+special font, and uses an atomic cache for detailed Git status. Use the
+included opinionated prompt as-is, or keep the backend and build the prompt
+yourself.
 
-## Install
+[Read the documentation](https://nobsprompt.pages.dev) or continue below for
+the shortest route to a working prompt.
+
+## Quick start
 
 Requirements: macOS, Zsh 5.8 or newer, a C11 compiler, Git, Meson 1.1+, and
 Ninja.
@@ -22,16 +26,11 @@ make test
 make install
 ```
 
-This installs the executable to `~/.local/bin`, the man page to
-`~/.local/share/man/man1`, and the custom-prompt guide to
-`~/.local/share/doc/nobsprompt`. Set another prefix when needed:
+This installs the executable, man page, and Markdown documentation under
+`~/.local`. The `PREFIX` make variable can override that location when needed.
 
-```sh
-make install PREFIX=/opt/homebrew
-```
-
-Ensure the executable is on `PATH`, then choose one integration in `~/.zshrc`
-after NVM initialization:
+Put the executable on `PATH`, then choose one integration in `~/.zshrc` after
+NVM initialization:
 
 | Use | Zsh setup | Presentation |
 | --- | --- | --- |
@@ -47,26 +46,20 @@ eval "$(nbsp init zsh)"
 
 Open a new terminal or run `exec zsh`.
 
-## The opinionated prompt
+## Two ways to use it
 
-The built-in prompt always shows the abbreviated working directory and, when
-available:
+### Opinionated prompt
 
-- Git branch, staged, modified, untracked, conflicted, ahead, behind, and stash
-  counts;
-- the active NVM version, derived from `NVM_BIN` without starting Node;
-- commands lasting at least two seconds;
-- background jobs;
-- the exact nonzero exit status.
+The built-in prompt always shows the abbreviated working directory. It adds
+Git state, the active NVM version, commands lasting at least two seconds,
+background jobs, and exact nonzero exit status only when relevant.
 
-Successful commands keep the prompt clean. A failure prefixes the prompt
-character with a compact red status such as `e1%` or `e127%`.
+Its colors, symbols, segments, layout, duration threshold, and prompt character
+are deliberately fixed. See the
+[opinionated prompt guide](https://nobsprompt.pages.dev/get-started/opinionated-prompt)
+for its complete behavior.
 
-Its colors, symbols, segments, duration threshold, and `%#` prompt character
-are intentionally fixed. Use the backend mode when you want to control
-presentation.
-
-## Build your own prompt
+### Custom prompt backend
 
 Detached mode installs the same timing, job tracking, asynchronous refresh,
 redraw, and external-editor integration, but never reads or writes `PROMPT` or
@@ -84,11 +77,10 @@ print -r -- "${NBSP_DATA[git_branch]}"
 print -r -- "${NBSP_DATA[node_version]}"
 ```
 
-Register a callback to rebuild your prompt whenever fresh data arrives. The
-backend includes `nbsp_prompt_escape` for safely inserting dynamic values into
-Zsh prompt strings.
+Register a callback to rebuild your prompt whenever fresh data arrives. Use
+`nbsp_prompt_escape` before inserting dynamic values into Zsh prompt strings.
 
-The same facts are available without the Zsh integration:
+For other consumers, the same facts are available without Zsh integration:
 
 ```console
 $ nbsp data
@@ -105,13 +97,14 @@ git_branch=main
 ...
 ```
 
-The readable format percent-encodes exceptional bytes. For lossless
-machine parsing, use `nbsp data --format nul`; never `eval` data output.
+The readable format percent-encodes exceptional bytes. Use
+`nbsp data --format nul` for lossless machine parsing. Never `eval` data
+output.
 
-See [Build a custom Zsh prompt](doc/custom-prompts.md) for a working minimal
-prompt, the complete schema and lifecycle, safe parsing rules, and layouts
-ranging from portable one-line prompts to right-side metadata, Nerd Font
-styling, prompt substitution, and OSC terminal titles.
+The [custom prompt guide](https://nobsprompt.pages.dev/custom-prompts) includes
+the complete schema and lifecycle, safe parsing rules, and practical layouts
+from portable one-line prompts to right-side metadata, Nerd Font styling,
+prompt substitution, and OSC terminal titles.
 
 ## How it works
 
@@ -127,16 +120,16 @@ There is no daemon, database, configuration language, or prompt-format parser.
 The built-in prompt owns presentation; detached consumers receive data and own
 the resulting prompt completely, including any OSC sequences.
 
-## Shell integration
+Read [internals](https://nobsprompt.pages.dev/internals) for the full
+foreground, background refresh, cache, and redraw lifecycle.
 
-Both modes track command duration, exit status, and job count through Zsh hooks.
-They also bind `Alt+E`, when that key is free, to edit the current command in
-`$VISUAL`, `$EDITOR`, or `vi`. Multiline buffers are supported and the command
-is returned to Zsh without being executed. `vi`, `vim`, and `nvim` also
-preserve the editor cursor position when it can be reported safely.
+## Shell behavior
 
-Existing user or plugin bindings are not replaced. See `man nbsp` for the
-complete integration behavior.
+Both modes track command duration, exit status, and job count through Zsh
+hooks. They bind `Alt+E`, when that key is free, to edit the current command in
+`$VISUAL`, `$EDITOR`, or `vi`. Existing user and plugin bindings are preserved.
+See the [external editor guide](https://nobsprompt.pages.dev/reference/external-editor)
+for multiline and cursor behavior.
 
 ## Operational settings
 
@@ -151,7 +144,7 @@ presentation environment variables.
 `nbsp refresh --force` bypasses only the 250 ms duplicate-refresh debounce.
 Locking, the timeout, and atomic cache publication still apply.
 
-## Performance and development
+## Performance
 
 The foreground path is designed to remain small and predictable. The project
 target is a warm p95 below 5 ms on the development Mac:
@@ -161,11 +154,13 @@ zsh bench/benchmark.zsh ./build/nbsp
 zsh bench/benchmark.zsh ./build/nbsp data
 ```
 
-[PERFORMANCE.md](PERFORMANCE.md) contains measured latency and memory results,
-the hot-path audit, sanitizer and fuzzing coverage, and the evaluation of more
-complex alternatives.
+[Performance and memory](https://nobsprompt.pages.dev/internals/performance)
+contains measured latency and memory results, the hot-path audit, sanitizer
+and fuzzing coverage, and the evaluation of more complex alternatives.
 
-For a debug build:
+## Development
+
+For the C project:
 
 ```sh
 meson setup build --buildtype=debug
@@ -173,13 +168,26 @@ meson compile -C build
 meson test -C build --print-errorlogs
 ```
 
-## Documentation
+The documentation content lives in `docs/`. The separate Blume project lives
+in `docs-website/`. Use its pinned Node version and pnpm through Corepack:
 
-- [`man nbsp`](doc/nbsp.1) - commands, configuration, editor behavior, and exit
-  statuses
-- [Build a custom Zsh prompt](doc/custom-prompts.md) - backend schema, lifecycle,
-  safety, and complete prompt recipes
-- [Performance](PERFORMANCE.md) - benchmarks, memory analysis, and validation
+```sh
+cd docs-website
+corepack enable
+pnpm install --frozen-lockfile
+pnpm docs:dev
+```
+
+Validate the same static build used by Cloudflare Pages:
+
+```sh
+pnpm run docs:ci
+```
+
+See [Documentation deployment](docs-website/DOCS_DEPLOYMENT.md) for the
+one-time Cloudflare Pages Git integration setup and
+[Brand assets](docs-website/BRAND_ASSETS.md) for the future logo file map. The
+deployed site is fully static and does not use Workers.
 
 ## License
 

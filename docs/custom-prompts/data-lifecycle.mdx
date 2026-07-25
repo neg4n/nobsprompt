@@ -1,0 +1,118 @@
+---
+title: Data and lifecycle
+description: Reference the complete NBSP_DATA schema, asynchronous update lifecycle, safe prompt escaping, and first-refresh behavior.
+---
+
+## Update lifecycle
+
+After every `precmd`, detached mode atomically replaces the global `NBSP_DATA`
+associative array with one complete schema. A background Git refresh can later
+replace it again and ask ZLE to redraw.
+
+Register prompt functions in `nbsp_data_update_functions`:
+
+```zsh
+my_prompt_update() {
+  # Assign PROMPT and/or RPROMPT here.
+}
+
+nbsp_data_update_functions+=(my_prompt_update)
+my_prompt_update
+```
+
+Callbacks run only after a complete schema has been parsed. Their output is
+not hidden or redirected.
+
+## Data schema
+
+| Key | Meaning |
+| --- | --- |
+| `schema_version` | Data contract version, currently `1` |
+| `cwd` | Full working directory |
+| `path` | Abbreviated display path |
+| `status` | Previous command's exact exit status |
+| `duration_ms` | Previous command duration in milliseconds |
+| `jobs` | Background job count |
+| `node_version` | Active NVM version, or empty |
+| `git_present` | `1` inside a repository |
+| `git_valid` | `1` when counters came from a valid cache snapshot |
+| `git_branch` | Branch name or short detached commit |
+| `git_updated_ms` | Snapshot wall-clock timestamp in milliseconds |
+| `git_staged` | Staged path count |
+| `git_modified` | Modified path count |
+| `git_untracked` | Untracked path count |
+| `git_conflicted` | Conflicted path count |
+| `git_ahead` | Commits ahead of upstream |
+| `git_behind` | Commits behind upstream |
+| `git_stashes` | Stash count |
+
+Consumers should require a schema version they understand, address records by
+key rather than position, and ignore unknown keys added by a compatible future
+version.
+
+## First repository prompt
+
+On the first prompt in a repository, `git_present` may be `1` while
+`git_valid` is `0`. The branch can still be read directly from Git metadata,
+while detailed counters remain zero. The asynchronous refresh then publishes
+a complete snapshot and redraws the prompt.
+
+Use `git_valid` when your presentation needs to distinguish a confirmed zero
+from counters that have not arrived:
+
+```zsh
+if [[ ${NBSP_DATA[git_valid]} == 0 ]]; then
+  git_state=" ..."
+fi
+```
+
+## Safe prompt text
+
+Zsh treats `%` and control bytes specially during prompt expansion. Escape
+dynamic values before inserting them:
+
+```zsh
+nbsp_prompt_escape "${NBSP_DATA[path]}"
+local safe_path=$REPLY
+```
+
+`nbsp_prompt_escape`:
+
+- writes the escaped value to `REPLY`;
+- replaces control bytes with `?`;
+- doubles `%`;
+- does not start a process.
+
+Do not insert unescaped raw fields into `PROMPT`, `RPROMPT`, or a
+`PROMPT_SUBST` expression.
+
+## Prompt substitution
+
+Callbacks can prepare escaped values while `PROMPT_SUBST` performs final
+expansion on each redraw:
+
+```zsh
+setopt promptsubst
+
+typeset -g MY_PATH MY_BRANCH
+prepare_prompt_data() {
+  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  MY_PATH=$REPLY
+  nbsp_prompt_escape "${NBSP_DATA[git_branch]}"
+  MY_BRANCH=$REPLY
+}
+
+nbsp_data_update_functions+=(prepare_prompt_data)
+prepare_prompt_data
+
+PROMPT='${MY_PATH}${MY_BRANCH:+ [${MY_BRANCH}]} %# '
+```
+
+## OSC sequences
+
+Detached mode leaves terminal control sequences under your ownership. It
+updates `NBSP_DATA` and requests a redraw, but does not replace or interpret
+OSC wrappers in your prompt.
+
+See [Prompt recipes](/custom-prompts/recipes#terminal-title-and-osc-wrapper) for
+a complete terminal-title example.

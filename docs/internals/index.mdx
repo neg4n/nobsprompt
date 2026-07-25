@@ -1,0 +1,111 @@
+---
+title: Internals
+description: Follow the cache-only foreground path, asynchronous Git refresh, atomic publication, and ZLE redraw lifecycle.
+---
+
+The main performance rule is simple: foreground prompt rendering never starts
+Git or Node.
+
+## Foreground path
+
+At each prompt, `nbsp`:
+
+1. reads the current directory and abbreviates its parent segments;
+2. discovers repository metadata with directory reads;
+3. reads the branch directly from Git metadata;
+4. loads one small validated cache snapshot for detailed Git counters;
+5. derives the active NVM version from `NVM_BIN`;
+6. combines those facts with status, duration, and job count.
+
+The `prompt` and `data` commands share this collector. The first renders the
+fixed Zsh prompt; the second serializes the facts.
+
+## Background refresh
+
+Detailed repository state comes from:
+
+```text
+git status --porcelain=v2
+```
+
+The Zsh integration starts `nbsp refresh` in the background. The refresh:
+
+- discovers the repository;
+- obtains a per-repository lock;
+- runs Git with a bounded timeout and output cap;
+- parses a complete porcelain-v2 snapshot;
+- publishes it through an atomic cache replacement;
+- notifies ZLE when the worker completes.
+
+ZLE then reloads the data and redraws the prompt. A failed or timed-out refresh
+preserves the last valid snapshot.
+
+## First prompt and stale data
+
+The branch can be available before detailed counters because it is read
+directly. On the first prompt in a repository:
+
+```text
+git_present=1
+git_valid=0
+git_branch=main
+```
+
+The next completed refresh publishes the counters and changes `git_valid` to
+`1`.
+
+## The 250 ms debounce
+
+A valid snapshot younger than 250 ms suppresses a duplicate background
+refresh. The check runs before and after obtaining the repository lock.
+
+:::warning
+The 250 ms interval is duplicate-refresh debounce, not a normal cache TTL and
+not filesystem invalidation. Normal prompt transitions still schedule a fresh
+porcelain snapshot asynchronously.
+:::
+
+`nbsp refresh --force` bypasses only this debounce. Locking, timeout, cache
+validation, and atomic publication remain unchanged. The Zsh integration uses
+it when a refresh that started before a foreground command must be followed by
+a post-command snapshot.
+
+## Cache safety
+
+Cache loading rejects snapshots that are malformed, oversized, incomplete,
+from another repository, from another format version, or carry an invalid
+timestamp.
+
+Cache location precedence is:
+
+1. `$NBSP_CACHE_DIR`;
+2. `$XDG_CACHE_HOME/nbsp`;
+3. `~/Library/Caches/nbsp`.
+
+`nbsp cache clear` removes cache and lock files owned by `nbsp`.
+
+## Redraw and terminal output
+
+The asynchronous worker communicates completion through a dedicated file
+descriptor. Prompt redraw does not hide or truncate the stdout or stderr of
+foreground commands.
+
+In built-in mode, `nbsp` replaces only the prompt body it previously rendered,
+preserving user wrappers around it. In detached mode, it never reads or writes
+`PROMPT` or `RPROMPT`. Custom OSC sequences remain under user ownership.
+
+## Deliberate boundaries
+
+There is no persistent daemon, database, prompt-format parser, or native Zsh
+module. Those approaches can reduce process startup further, but introduce
+more lifecycle, compatibility, distribution, and crash-isolation cost than
+this project currently accepts.
+
+<CardGroup cols={2}>
+  <Card title="Performance and memory" href="/internals/performance" icon="gauge">
+    Read measured latency, memory, safety coverage, and rejected alternatives.
+  </Card>
+  <Card title="Operational configuration" href="/reference/configuration" icon="settings">
+    Configure cache location and the bounded Git timeout.
+  </Card>
+</CardGroup>

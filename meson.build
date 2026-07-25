@@ -69,8 +69,31 @@ nbsp_exe = executable(
 
 install_man('doc/nbsp.1')
 install_data(
-  'doc/custom-prompts.md',
+  'docs/index.mdx',
   install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt'),
+)
+install_data(
+  'docs/get-started/index.mdx',
+  'docs/get-started/opinionated-prompt.mdx',
+  install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt', 'get-started'),
+)
+install_data(
+  'docs/custom-prompts/index.mdx',
+  'docs/custom-prompts/data-lifecycle.mdx',
+  'docs/custom-prompts/recipes.mdx',
+  'docs/custom-prompts/direct-data.mdx',
+  install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt', 'custom-prompts'),
+)
+install_data(
+  'docs/internals/index.mdx',
+  'docs/internals/performance.mdx',
+  install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt', 'internals'),
+)
+install_data(
+  'docs/reference/cli.mdx',
+  'docs/reference/configuration.mdx',
+  'docs/reference/external-editor.mdx',
+  install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt', 'reference'),
 )
 
 subdir('tests')

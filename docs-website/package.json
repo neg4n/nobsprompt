@@ -1,0 +1,26 @@
+{
+  "name": "nobsprompt-docs",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.34.5",
+  "scripts": {
+    "dev": "ASTRO_TELEMETRY_DISABLED=1 blume dev",
+    "build": "ASTRO_TELEMETRY_DISABLED=1 blume build",
+    "docs:dev": "ASTRO_TELEMETRY_DISABLED=1 blume dev",
+    "docs:check": "ASTRO_TELEMETRY_DISABLED=1 blume check --strict",
+    "docs:validate": "blume validate --strict",
+    "docs:build": "ASTRO_TELEMETRY_DISABLED=1 blume build",
+    "docs:verify": "node scripts/verify-static-output.mjs",
+    "docs:audit": "blume audit --fail-on warning",
+    "docs:ci": "ASTRO_TELEMETRY_DISABLED=1 blume check --strict && blume validate --strict && ASTRO_TELEMETRY_DISABLED=1 blume build && node scripts/verify-static-output.mjs && blume audit --fail-on warning"
+  },
+  "dependencies": {
+    "blume": "1.1.3"
+  },
+  "devDependencies": {
+    "astro": "7.1.3"
+  }
+}

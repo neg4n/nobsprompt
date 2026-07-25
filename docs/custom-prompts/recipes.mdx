@@ -1,0 +1,164 @@
+---
+title: Prompt recipes
+description: Copy and adapt complete Zsh prompt layouts backed by NBSP_DATA, including Git state, right-side metadata, Nerd Fonts, and OSC titles.
+---
+
+Each recipe assumes detached initialization has already run:
+
+```zsh
+eval "$(nbsp init zsh --detached)"
+```
+
+Use one recipe as your callback, or combine their presentation logic
+deliberately.
+
+## Detailed Git state
+
+```zsh
+git_prompt() {
+  local path git= branch
+  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  path=$REPLY
+
+  if [[ ${NBSP_DATA[git_present]} == 1 ]]; then
+    nbsp_prompt_escape "${NBSP_DATA[git_branch]}"
+    branch=$REPLY
+    git=" %F{cyan}git:${branch}%f"
+    (( NBSP_DATA[git_staged] ))     && git+=" %F{green}+${NBSP_DATA[git_staged]}%f"
+    (( NBSP_DATA[git_modified] ))   && git+=" %F{yellow}~${NBSP_DATA[git_modified]}%f"
+    (( NBSP_DATA[git_untracked] ))  && git+=" %F{blue}?${NBSP_DATA[git_untracked]}%f"
+    (( NBSP_DATA[git_conflicted] )) && git+=" %F{red}!${NBSP_DATA[git_conflicted]}%f"
+    (( NBSP_DATA[git_ahead] ))      && git+=" ↑${NBSP_DATA[git_ahead]}"
+    (( NBSP_DATA[git_behind] ))     && git+=" ↓${NBSP_DATA[git_behind]}"
+    (( NBSP_DATA[git_stashes] ))    && git+=" ≡${NBSP_DATA[git_stashes]}"
+    [[ ${NBSP_DATA[git_valid]} == 0 ]] && git+=" %F{yellow}…%f"
+  fi
+
+  PROMPT="%F{magenta}${path}%f${git} %# "
+}
+
+nbsp_data_update_functions+=(git_prompt)
+git_prompt
+```
+
+## Two lines with failure status
+
+```zsh
+two_line_prompt() {
+  local path state=
+  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  path=$REPLY
+
+  if (( NBSP_DATA[status] )); then
+    state="%F{red}exit ${NBSP_DATA[status]}%f "
+  fi
+
+  PROMPT="%F{blue}${path}%f
+${state}%# "
+}
+
+nbsp_data_update_functions+=(two_line_prompt)
+two_line_prompt
+```
+
+## Metadata on the right
+
+```zsh
+right_prompt() {
+  local path node= right=
+  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  path=$REPLY
+  PROMPT="${path} %# "
+
+  if [[ -n ${NBSP_DATA[node_version]} ]]; then
+    nbsp_prompt_escape "${NBSP_DATA[node_version]}"
+    node=$REPLY
+    right+="%F{green}node ${node}%f"
+  fi
+  (( NBSP_DATA[duration_ms] >= 500 )) &&
+    right+=" %F{yellow}${NBSP_DATA[duration_ms]}ms%f"
+  (( NBSP_DATA[jobs] )) &&
+    right+=" %F{cyan}jobs ${NBSP_DATA[jobs]}%f"
+  RPROMPT=$right
+}
+
+nbsp_data_update_functions+=(right_prompt)
+right_prompt
+```
+
+## Optional Nerd Font style
+
+The backend has no font requirement. If your terminal already uses a Nerd
+Font, your presentation can use its glyphs:
+
+```zsh
+nerd_prompt() {
+  local path branch=
+  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  path=$REPLY
+
+  if [[ ${NBSP_DATA[git_present]} == 1 ]]; then
+    nbsp_prompt_escape "${NBSP_DATA[git_branch]}"
+    branch=" %F{cyan} $REPLY%f"
+  fi
+
+  PROMPT="%F{blue} ${path}%f${branch}
+%F{magenta}❯%f "
+}
+
+nbsp_data_update_functions+=(nerd_prompt)
+nerd_prompt
+```
+
+Replace ``, ``, and `❯` with `dir`, `git`, and `>` for a portable version.
+
+## Prompt substitution
+
+Prepare escaped values in the callback and leave final expansion to
+`PROMPT_SUBST`:
+
+```zsh
+setopt promptsubst
+
+typeset -g MY_PATH MY_BRANCH
+prepare_prompt_data() {
+  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  MY_PATH=$REPLY
+  nbsp_prompt_escape "${NBSP_DATA[git_branch]}"
+  MY_BRANCH=$REPLY
+}
+
+nbsp_data_update_functions+=(prepare_prompt_data)
+prepare_prompt_data
+
+PROMPT='${MY_PATH}${MY_BRANCH:+ [${MY_BRANCH}]} %# '
+```
+
+:::warning
+Do not insert unescaped raw fields into a `PROMPT_SUBST` expression.
+:::
+
+## Terminal title and OSC wrapper
+
+```zsh
+title_prompt() {
+  local path
+  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  path=$REPLY
+
+  # %{\e]0;...\a%} changes the title without occupying prompt width.
+  PROMPT=$'%{\e]0;'"${path}"$'\a%}'"%F{cyan}${path}%f %# "
+}
+
+nbsp_data_update_functions+=(title_prompt)
+title_prompt
+```
+
+Async completion updates `NBSP_DATA` and requests a redraw. `nbsp` does not
+replace or interpret the OSC wrapper.
+
+## Presentation remains yours
+
+These examples are starting points, not a second configuration language.
+Ordinary Zsh code decides what to render. The backend remains responsible only
+for facts and lifecycle.
