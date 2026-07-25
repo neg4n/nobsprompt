@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "assets": {
+    "nobsprompt-demo": {
+      "duration": 46.334,
+      "fps": 30,
+      "height": 1080,
+      "placeholder": "data:image/webp;base64,UklGRjoAAABXRUJQVlA4IC4AAAAwAwCdASogABUAPwF4tFOrJyUiqAgBYCAJaQAALnVQkJrAAP7xAZGRLsqMewAA",
+      "posters": {
+        "avif": [
+          {
+            "bytes": 1438,
+            "sha256": "15a3aa9f44ecac866def13d1f5905dbca4f9a6030d07b46b93c3cf2e53614c51",
+            "src": "/media/nobsprompt-demo.poster-816.15a3aa9f44ec.avif",
+            "width": 816
+          },
+          {
+            "bytes": 2217,
+            "sha256": "a7e67e0fdbb1741be6ff180636947192ba4c4496040d52d05fbc5c4f69ee4d7f",
+            "src": "/media/nobsprompt-demo.poster-1632.a7e67e0fdbb1.avif",
+            "width": 1632
+          }
+        ],
+        "jpeg": {
+          "bytes": 10404,
+          "sha256": "b85e1aab1b46771750bd93947cf32eed0735a5194428b08f747b60df989e5d5a",
+          "src": "/media/nobsprompt-demo.poster-1632.b85e1aab1b46.jpg",
+          "width": 1632
+        },
+        "webp": [
+          {
+            "bytes": 2666,
+            "sha256": "4ae37072a81be05b7ac18d8ee7384c286c83ad379851376c6fd474c907d62888",
+            "src": "/media/nobsprompt-demo.poster-816.4ae37072a81b.webp",
+            "width": 816
+          },
+          {
+            "bytes": 6416,
+            "sha256": "525942e210dc3bea9180a9c56e7d0242f8a4e1a904494b708c13bd652cbd1ee2",
+            "src": "/media/nobsprompt-demo.poster-1632.525942e210dc.webp",
+            "width": 1632
+          }
+        ]
+      },
+      "source": "assets/videos/nobsprompt-demo.mp4",
+      "sourceBytes": 7625243,
+      "sourceSha256": "032dbb6639b2260386ef6f900b45e18e8bb868a6ae230f370f43fe839ff94d4b",
+      "videos": [
+        {
+          "bytes": 5171947,
+          "sha256": "5173eaec75fcc19ac8432fc5a8733a8d8b15a80c6bcfae786f6cc7dce700b8ea",
+          "src": "/media/nobsprompt-demo.vp9.5173eaec75fc.webm",
+          "type": "video/webm; codecs=\"vp9\""
+        },
+        {
+          "bytes": 5398990,
+          "sha256": "841b6868e8a6f04c17fef6051974ad2cda692baacb31dec471798a50adcc7773",
+          "src": "/media/nobsprompt-demo.h264.841b6868e8a6.mp4",
+          "type": "video/mp4; codecs=\"avc1.640029\""
+        }
+      ],
+      "width": 1632
+    }
+  }
+}

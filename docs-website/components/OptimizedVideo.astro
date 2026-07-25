@@ -1,0 +1,474 @@
+---
+import videoManifest from "../assets/videos/video-manifest.json";
+
+interface MediaRecord {
+  bytes: number;
+  sha256: string;
+  src: string;
+}
+
+interface PosterRecord extends MediaRecord {
+  width: number;
+}
+
+interface VideoRecord extends MediaRecord {
+  type: string;
+}
+
+interface VideoAsset {
+  duration: number;
+  fps: number;
+  height: number;
+  placeholder: string;
+  posters: {
+    avif: PosterRecord[];
+    jpeg: PosterRecord;
+    webp: PosterRecord[];
+  };
+  videos: VideoRecord[];
+  width: number;
+}
+
+interface Props {
+  asset: string;
+  autoplay?: boolean;
+  caption?: string;
+  loop?: boolean;
+  priority?: boolean;
+  title: string;
+}
+
+const {
+  asset: assetName,
+  autoplay = true,
+  caption,
+  loop = true,
+  priority = false,
+  title,
+} = Astro.props;
+const assets = videoManifest.assets as Record<string, VideoAsset>;
+const asset = assets[assetName];
+
+if (!asset) {
+  throw new Error(`Unknown optimized video asset: ${assetName}`);
+}
+
+const sourceSet = (posters: PosterRecord[]) =>
+  posters.map((poster) => `${poster.src} ${poster.width}w`).join(", ");
+const mp4 = asset.videos.find((video) => video.type.startsWith("video/mp4"));
+const captionId = caption ? `optimized-video-${assetName}-caption` : undefined;
+const lazyVideoAttributes: Record<string, string> = { loading: "lazy" };
+---
+
+<optimized-video
+  class="not-prose my-6 block"
+  data-autoplay={autoplay ? "true" : "false"}
+  data-loop={loop ? "true" : "false"}
+  style={`--video-placeholder: url("${asset.placeholder}")`}
+>
+  <figure class="m-0">
+    <div
+      class="video-shell"
+      style={`aspect-ratio: ${asset.width} / ${asset.height}`}
+    >
+      <picture class="video-poster" data-poster>
+        <source
+          type="image/avif"
+          srcset={sourceSet(asset.posters.avif)}
+          sizes="(max-width: 48rem) 100vw, 48rem"
+        />
+        <source
+          type="image/webp"
+          srcset={sourceSet(asset.posters.webp)}
+          sizes="(max-width: 48rem) 100vw, 48rem"
+        />
+        <img
+          src={asset.posters.jpeg.src}
+          alt=""
+          width={asset.width}
+          height={asset.height}
+          loading={priority ? "eager" : "lazy"}
+          fetchpriority={priority ? "high" : "auto"}
+          decoding="async"
+        />
+      </picture>
+
+      <video
+        data-video
+        aria-label={title}
+        aria-describedby={captionId}
+        width={asset.width}
+        height={asset.height}
+        preload="none"
+        {...lazyVideoAttributes}
+        muted
+        autoplay={autoplay}
+        loop={loop}
+        playsinline
+        webkit-playsinline=""
+        disablepictureinpicture
+        disableRemotePlayback
+        x-webkit-airplay="deny"
+      >
+        {
+          asset.videos.map((video) => (
+            <source data-src={video.src} type={video.type} />
+          ))
+        }
+        {mp4 && <a href={mp4.src}>Download the nobsprompt demo video.</a>}
+      </video>
+
+      <button
+        class="video-control"
+        type="button"
+        data-control
+        aria-label="Pause demo video"
+      >
+        <svg
+          class="pause-icon"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          aria-hidden="true"
+        >
+          <path d="M8 5h3v14H8zm5 0h3v14h-3z" />
+        </svg>
+        <svg
+          class="play-icon"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          aria-hidden="true"
+        >
+          <path d="m8 5 11 7-11 7z" />
+        </svg>
+      </button>
+
+      {
+        mp4 && (
+          <noscript>
+            <video
+              class="video-noscript"
+              controls
+              playsinline
+              preload="metadata"
+              poster={asset.posters.jpeg.src}
+              width={asset.width}
+              height={asset.height}
+            >
+              <source src={mp4.src} type={mp4.type} />
+            </video>
+          </noscript>
+        )
+      }
+    </div>
+
+    {
+      caption && (
+        <figcaption
+          id={captionId}
+          class="mt-2 text-center text-muted-foreground text-xs leading-5"
+        >
+          {caption}
+        </figcaption>
+      )
+    }
+  </figure>
+</optimized-video>
+
+<script>
+  interface NetworkInformation {
+    saveData?: boolean;
+  }
+
+  interface NavigatorWithConnection extends Navigator {
+    connection?: NetworkInformation;
+  }
+
+  class OptimizedVideoElement extends HTMLElement {
+    private automaticPlayback = false;
+    private inViewport = false;
+    private loaded = false;
+    private observer?: IntersectionObserver;
+    private userPaused = false;
+    private video?: HTMLVideoElement;
+    private control?: HTMLButtonElement;
+
+    connectedCallback() {
+      this.video = this.querySelector<HTMLVideoElement>("[data-video]") ?? undefined;
+      this.control =
+        this.querySelector<HTMLButtonElement>("[data-control]") ?? undefined;
+
+      if (!this.video || !this.control) {
+        return;
+      }
+
+      this.video.muted = true;
+      this.video.defaultMuted = true;
+      this.video.playsInline = true;
+      this.video.loop = this.dataset.loop === "true";
+      this.video.setAttribute("muted", "");
+      this.video.setAttribute("playsinline", "");
+      this.video.setAttribute("webkit-playsinline", "");
+
+      const reducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      );
+      const saveData = (navigator as NavigatorWithConnection).connection
+        ?.saveData;
+      this.automaticPlayback =
+        this.dataset.autoplay === "true" && !reducedMotion.matches && !saveData;
+
+      this.control.addEventListener("click", this.togglePlayback);
+      this.video.addEventListener("play", this.handlePlay);
+      this.video.addEventListener("pause", this.handlePause);
+      document.addEventListener("visibilitychange", this.handleVisibility);
+      reducedMotion.addEventListener("change", this.handleMotionPreference);
+
+      if ("IntersectionObserver" in window) {
+        this.observer = new IntersectionObserver(this.handleIntersection, {
+          rootMargin: "250px 0px",
+          threshold: 0.01,
+        });
+        this.observer.observe(this);
+      } else if (this.automaticPlayback) {
+        this.inViewport = true;
+        void this.playAutomatically();
+      }
+
+      this.updateControl();
+    }
+
+    disconnectedCallback() {
+      this.observer?.disconnect();
+      this.control?.removeEventListener("click", this.togglePlayback);
+      this.video?.removeEventListener("play", this.handlePlay);
+      this.video?.removeEventListener("pause", this.handlePause);
+      document.removeEventListener("visibilitychange", this.handleVisibility);
+    }
+
+    private loadSources() {
+      if (!this.video || this.loaded) {
+        return;
+      }
+
+      for (const source of this.video.querySelectorAll<HTMLSourceElement>(
+        "source[data-src]"
+      )) {
+        const src = source.dataset.src;
+        if (src) {
+          source.src = src;
+        }
+      }
+
+      this.loaded = true;
+      this.video.load();
+    }
+
+    private playAutomatically = async () => {
+      if (
+        !this.video ||
+        !this.automaticPlayback ||
+        this.userPaused ||
+        !this.inViewport ||
+        document.hidden
+      ) {
+        return;
+      }
+
+      this.loadSources();
+
+      try {
+        await this.video.play();
+      } catch {
+        this.dataset.blocked = "true";
+        this.updateControl();
+      }
+    };
+
+    private togglePlayback = async () => {
+      if (!this.video) {
+        return;
+      }
+
+      if (!this.video.paused) {
+        this.userPaused = true;
+        this.video.pause();
+        return;
+      }
+
+      this.userPaused = false;
+      this.loadSources();
+
+      try {
+        await this.video.play();
+      } catch {
+        this.dataset.blocked = "true";
+        this.updateControl();
+      }
+    };
+
+    private handleIntersection = (entries: IntersectionObserverEntry[]) => {
+      const entry = entries[0];
+      this.inViewport = Boolean(entry?.isIntersecting);
+
+      if (this.inViewport) {
+        void this.playAutomatically();
+      } else {
+        this.video?.pause();
+      }
+    };
+
+    private handleVisibility = () => {
+      if (document.hidden) {
+        this.video?.pause();
+      } else {
+        void this.playAutomatically();
+      }
+    };
+
+    private handleMotionPreference = (
+      event: MediaQueryListEvent
+    ) => {
+      if (event.matches) {
+        this.automaticPlayback = false;
+        this.video?.pause();
+      }
+    };
+
+    private handlePlay = () => {
+      this.dataset.playing = "true";
+      delete this.dataset.blocked;
+      this.updateControl();
+    };
+
+    private handlePause = () => {
+      this.dataset.playing = "false";
+      this.updateControl();
+    };
+
+    private updateControl() {
+      if (!this.control || !this.video) {
+        return;
+      }
+
+      const playing = !this.video.paused;
+      this.control.setAttribute(
+        "aria-label",
+        playing ? "Pause demo video" : "Play demo video"
+      );
+    }
+  }
+
+  if (!customElements.get("optimized-video")) {
+    customElements.define("optimized-video", OptimizedVideoElement);
+  }
+</script>
+
+<style>
+  .video-shell {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-blume);
+    background-color: var(--color-muted);
+    background-image: var(--video-placeholder);
+    background-position: center;
+    background-size: cover;
+    contain: layout paint;
+  }
+
+  .video-poster,
+  [data-video],
+  .video-noscript {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    object-fit: cover;
+  }
+
+  .video-poster {
+    z-index: 1;
+    transition: opacity 160ms ease;
+  }
+
+  .video-poster img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    object-fit: cover;
+  }
+
+  [data-video] {
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 160ms ease;
+  }
+
+  optimized-video[data-playing="true"] [data-video] {
+    opacity: 1;
+  }
+
+  optimized-video[data-playing="true"] .video-poster {
+    opacity: 0;
+  }
+
+  .video-control {
+    position: absolute;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    z-index: 4;
+    display: grid;
+    width: 2.25rem;
+    height: 2.25rem;
+    place-items: center;
+    border: 1px solid rgb(255 255 255 / 25%);
+    border-radius: 999px;
+    color: white;
+    background: rgb(0 0 0 / 72%);
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition:
+      background-color 120ms ease,
+      transform 120ms ease;
+  }
+
+  .video-control:hover {
+    background: rgb(0 0 0 / 88%);
+    transform: scale(1.04);
+  }
+
+  .video-control:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .video-control svg {
+    fill: currentColor;
+  }
+
+  .play-icon {
+    display: none;
+  }
+
+  optimized-video:not([data-playing="true"]) .play-icon {
+    display: block;
+  }
+
+  optimized-video:not([data-playing="true"]) .pause-icon {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .video-poster,
+    [data-video],
+    .video-control {
+      transition: none;
+    }
+  }
+</style>

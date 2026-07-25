@@ -65,6 +65,10 @@ The generated `sitemap.xml`, `robots.txt`, Open Graph images, search data, raw
 Markdown routes, `llms.txt`, and `llms-full.txt` are static files inside
 `dist/`.
 
+Content-hashed video files and responsive posters are also copied from
+`public/media/`. They are generated locally and committed, so Cloudflare only
+validates and serves them. See `VIDEO_ASSETS.md` before replacing a recording.
+
 ## Changing versions
 
 Update the following together:

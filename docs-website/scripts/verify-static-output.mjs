@@ -4,6 +4,10 @@ import { relative, resolve } from "node:path";
 const site = "https://nobsprompt.pages.dev";
 const dist = resolve("dist");
 const failures = [];
+const videoManifest = JSON.parse(
+  readFileSync(resolve("assets/videos/video-manifest.json"), "utf8")
+);
+const landingVideo = videoManifest.assets?.["nobsprompt-demo"];
 
 const fail = (message) => {
   failures.push(message);
@@ -46,6 +50,12 @@ const tags = (html, name) =>
     })
   );
 
+const decodeAttribute = (value) =>
+  value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&amp;", "&");
+
 const meta = (html, key) => {
   const wanted = key.toLowerCase();
   const tag = tags(html, "meta").find(
@@ -78,8 +88,22 @@ for (const path of [
   "logo-light.svg",
   "logo-dark.svg",
   "apple-touch-icon.png",
+  "_headers",
 ]) {
   requireFile(path, path.startsWith("llms") ? 100 : 1);
+}
+
+if (!landingVideo) {
+  fail("video-manifest.json is missing nobsprompt-demo");
+} else {
+  for (const record of [
+    ...landingVideo.videos,
+    ...landingVideo.posters.avif,
+    ...landingVideo.posters.webp,
+    landingVideo.posters.jpeg,
+  ]) {
+    requireFile(record.src.replace(/^\//u, ""), record.bytes);
+  }
 }
 
 const allFiles = walk(dist);
@@ -107,6 +131,7 @@ const logoText = logo.toString("utf8");
 const logoLightText = read("logo-light.svg");
 const logoDarkText = read("logo-dark.svg");
 const appleTouchIcon = readBuffer("apple-touch-icon.png");
+const headers = read("_headers");
 
 if (!logo.equals(icon)) {
   fail("logo.svg and icon.svg are not byte-identical");
@@ -143,6 +168,20 @@ if (
   appleTouchIcon.readUInt32BE(20) !== 180
 ) {
   fail("apple-touch-icon.png is not a 180 by 180 PNG");
+}
+if (
+  !headers.includes("/media/*") ||
+  !headers.includes("Cache-Control: public, max-age=31536000, immutable")
+) {
+  fail("_headers is missing immutable media caching");
+}
+for (const type of [
+  "text/markdown; charset=utf-8",
+  "text/plain; charset=utf-8",
+]) {
+  if (!headers.includes(type)) {
+    fail(`_headers is missing ${type}`);
+  }
 }
 
 for (const path of htmlFiles) {
@@ -264,6 +303,79 @@ for (const path of htmlFiles) {
   ) {
     fail(`${name} contains the disabled page feedback widget`);
   }
+}
+
+const homepage = read("index.html");
+const optimizedVideos = [
+  ...homepage.matchAll(/<optimized-video\b[\s\S]*?<\/optimized-video>/giu),
+];
+
+if (optimizedVideos.length !== 1) {
+  fail("index.html must contain exactly one optimized landing video");
+} else if (landingVideo) {
+  const markup = optimizedVideos[0][0];
+  const video = tags(markup, "video")[0];
+  const deferredSources = tags(markup, "source").filter(
+    ({ attributes: value }) => value["data-src"]
+  );
+
+  if (
+    !markup.includes(
+      `aspect-ratio: ${landingVideo.width} / ${landingVideo.height}`
+    )
+  ) {
+    fail("the landing video does not reserve its source aspect ratio");
+  }
+  if (
+    video?.attributes.width !== String(landingVideo.width) ||
+    video.attributes.height !== String(landingVideo.height) ||
+    video.attributes.preload !== "none" ||
+    video.attributes.loading !== "lazy"
+  ) {
+    fail("the landing video is missing intrinsic dimensions or lazy loading");
+  }
+  for (const attribute of [
+    "autoplay",
+    "disablepictureinpicture",
+    "disableremoteplayback",
+    "loop",
+    "muted",
+    "playsinline",
+    "webkit-playsinline",
+  ]) {
+    if (!new RegExp(`\\s${attribute}(?:\\s|=|>)`, "iu").test(video?.raw ?? "")) {
+      fail(`the landing video is missing ${attribute}`);
+    }
+  }
+  if (/\scontrols(?:\s|=|>)/iu.test(video?.raw ?? "")) {
+    fail("the lazy landing video must not use native controls");
+  }
+  if (deferredSources.length !== landingVideo.videos.length) {
+    fail("the landing video does not defer every encoded source");
+  } else {
+    for (const source of deferredSources) {
+      if (
+        !landingVideo.videos.some(
+          (record) =>
+            record.src === source.attributes["data-src"] &&
+            record.type === decodeAttribute(source.attributes.type)
+        )
+      ) {
+        fail(`the landing video contains an unknown source: ${source.raw}`);
+      }
+    }
+  }
+  if (
+    !/<picture\b/iu.test(markup) ||
+    !/data-control(?:\s|=|>)/iu.test(markup) ||
+    !/aria-label="Pause demo video"/iu.test(markup) ||
+    !/<noscript\b/iu.test(markup)
+  ) {
+    fail("the landing video is missing its poster, control, or fallback");
+  }
+}
+if (homepage.includes("Video planned: nobsprompt in 15 seconds")) {
+  fail("index.html still contains the obsolete landing-video placeholder");
 }
 
 const sitemap = read("sitemap.xml");

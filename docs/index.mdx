@@ -11,13 +11,19 @@ prompt as-is, or use the same backend to build your own.
 /U/i/D/p/nobsprompt [main +1 ~2 ?3 ^1] [node:22.14.0] [2.4s] [jobs:2] %
 ```
 
-:::note
-**Video planned: nobsprompt in 15 seconds**
+<Visibility for="web">
+  <OptimizedVideo
+    asset="nobsprompt-demo"
+    title="nobsprompt reacting to Git state, Node, command timing, jobs, and failures"
+    caption="The built-in prompt stays readable while repository and command state changes."
+    priority
+  />
+</Visibility>
 
-Show one terminal moving from a clean repository to modified Git state, then a
-failed command and a slow command. Keep the prompt readable throughout and
-finish on the clean prompt again.
-:::
+<Visibility for="agents">
+  The landing-page demo shows nobsprompt reacting to Git state, Node, command
+  timing, background jobs, and failures while keeping the prompt readable.
+</Visibility>
 
 `nbsp` is written in C, links no third-party libraries, requires no daemon or
 special font, and keeps detailed Git status in an atomic cache.

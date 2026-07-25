@@ -1,2 +1,4 @@
 docs-website/** linguist-vendored
 docs/** linguist-documentation
+docs-website/assets/videos/*.mp4 binary
+docs-website/public/media/** binary linguist-generated=true
