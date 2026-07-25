@@ -280,9 +280,10 @@ const updateVelocity = (event: PointerEvent) => {
   }
 
   const newestTime = drag.samples.at(-1)?.time ?? event.timeStamp;
+  const cutoffTime = newestTime - VELOCITY_WINDOW_MS;
   while (
-    drag.samples.length > 2 &&
-    drag.samples[1].time < newestTime - VELOCITY_WINDOW_MS
+    drag.samples.length > 0 &&
+    drag.samples[0].time < cutoffTime
   ) {
     drag.samples.shift();
   }
@@ -291,6 +292,8 @@ const updateVelocity = (event: PointerEvent) => {
   const last = drag.samples.at(-1);
   if (first && last && last.time > first.time) {
     drag.velocityX = (last.x - first.x) / (last.time - first.time);
+  } else {
+    drag.velocityX = 0;
   }
 };
 
