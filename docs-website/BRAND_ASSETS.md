@@ -37,8 +37,10 @@ changing either path's width.
    pnpm run docs:ci
    ```
 
-`brand:check` is part of the CI command. It fails when a generated asset is
-missing or differs from the canonical SVG source.
+`brand:check` is part of the CI command. SVG variants are compared byte for
+byte. The Apple touch icon is decoded and checked for PNG format, 180 by 180
+dimensions, opacity, and visual equivalence. This keeps stale-image detection
+without depending on platform-specific PNG compression or edge rasterization.
 
 ## Website wiring
 

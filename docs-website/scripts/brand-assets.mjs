@@ -97,20 +97,20 @@ const appleTouchIcon = await sharp(logoLight)
   .png({ compressionLevel: 9, palette: true })
   .toBuffer();
 
-const assets = new Map([
+const vectorAssets = new Map([
   ["logo.svg", logo],
   ["icon.svg", logo],
   ["logo-light.svg", logoLight],
   ["logo-dark.svg", logoDark],
-  ["apple-touch-icon.png", appleTouchIcon],
 ]);
 
 if (mode === "--write") {
   await mkdir(publicDirectory, { recursive: true });
   await Promise.all(
-    [...assets].map(([name, content]) =>
-      writeFile(resolve(publicDirectory, name), content)
-    )
+    [
+      ...vectorAssets,
+      ["apple-touch-icon.png", appleTouchIcon],
+    ].map(([name, content]) => writeFile(resolve(publicDirectory, name), content))
   );
   console.log(
     "Generated adaptive, light, dark, favicon, and Apple touch assets."
@@ -120,7 +120,7 @@ if (mode === "--write") {
 
 const stale = [];
 
-for (const [name, expected] of assets) {
+for (const [name, expected] of vectorAssets) {
   try {
     const actual = await readFile(resolve(publicDirectory, name));
     if (!actual.equals(expected)) {
@@ -129,6 +129,50 @@ for (const [name, expected] of assets) {
   } catch {
     stale.push(name);
   }
+}
+
+try {
+  const actualAppleTouchIcon = await readFile(
+    resolve(publicDirectory, "apple-touch-icon.png")
+  );
+  const metadata = await sharp(actualAppleTouchIcon).metadata();
+
+  if (
+    metadata.format !== "png" ||
+    metadata.width !== 180 ||
+    metadata.height !== 180 ||
+    metadata.hasAlpha
+  ) {
+    stale.push("apple-touch-icon.png");
+  } else {
+    const [actualPixels, expectedPixels] = await Promise.all(
+      [actualAppleTouchIcon, appleTouchIcon].map((content) =>
+        sharp(content).toColourspace("srgb").removeAlpha().raw().toBuffer()
+      )
+    );
+
+    if (actualPixels.length !== expectedPixels.length) {
+      stale.push("apple-touch-icon.png");
+    } else {
+      let totalDifference = 0;
+
+      for (let index = 0; index < actualPixels.length; index += 1) {
+        totalDifference += Math.abs(
+          actualPixels[index] - expectedPixels[index]
+        );
+      }
+
+      const meanDifference = totalDifference / actualPixels.length;
+
+      // Sharp and libvips can encode PNGs differently across platforms. Tiny
+      // rasterization differences at antialiased edges are also acceptable.
+      if (meanDifference > 0.5) {
+        stale.push("apple-touch-icon.png");
+      }
+    }
+  }
+} catch {
+  stale.push("apple-touch-icon.png");
 }
 
 if (stale.length > 0) {
