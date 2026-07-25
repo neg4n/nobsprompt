@@ -10,6 +10,7 @@ const fail = (message) => {
 };
 
 const read = (path) => readFileSync(resolve(dist, path), "utf8");
+const readBuffer = (path) => readFileSync(resolve(dist, path));
 
 const requireFile = (path, minimumBytes = 1) => {
   const absolute = resolve(dist, path);
@@ -72,6 +73,11 @@ for (const path of [
   "agent-readability.json",
   "index.md",
   "index.mdx",
+  "logo.svg",
+  "icon.svg",
+  "logo-light.svg",
+  "logo-dark.svg",
+  "apple-touch-icon.png",
 ]) {
   requireFile(path, path.startsWith("llms") ? 100 : 1);
 }
@@ -95,6 +101,50 @@ const htmlFiles = allFiles.filter(
 );
 const canonicalUrls = new Set();
 
+const logo = readBuffer("logo.svg");
+const icon = readBuffer("icon.svg");
+const logoText = logo.toString("utf8");
+const logoLightText = read("logo-light.svg");
+const logoDarkText = read("logo-dark.svg");
+const appleTouchIcon = readBuffer("apple-touch-icon.png");
+
+if (!logo.equals(icon)) {
+  fail("logo.svg and icon.svg are not byte-identical");
+}
+if (
+  !/<svg\b[^>]*\bviewBox="0 0 2048 2048"/u.test(logoText) ||
+  !/prefers-color-scheme:\s*dark/u.test(logoText) ||
+  !logoText.includes("data-theme=dark") ||
+  !/<g\b[^>]*\btransform="matrix\(/u.test(logoText) ||
+  logoText.includes("&quot;") ||
+  /<path\b[^>]*\bstroke=/u.test(logoText) ||
+  /<rect\b/u.test(logoText)
+) {
+  fail("logo.svg is missing its adaptive transparent styling");
+}
+if (
+  /<style\b|nbsp-foreground/u.test(logoLightText) ||
+  !logoLightText.includes('fill="#191919"')
+) {
+  fail("logo-light.svg is not a static light-theme logo");
+}
+if (
+  /<style\b|nbsp-foreground/u.test(logoDarkText) ||
+  !logoDarkText.includes('fill="#fff"')
+) {
+  fail("logo-dark.svg is not a static dark-theme logo");
+}
+if (/<metadata\b|transform="translate\(0 0\)"/u.test(logoText)) {
+  fail("logo.svg contains removable generator markup");
+}
+if (
+  appleTouchIcon.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a" ||
+  appleTouchIcon.readUInt32BE(16) !== 180 ||
+  appleTouchIcon.readUInt32BE(20) !== 180
+) {
+  fail("apple-touch-icon.png is not a 180 by 180 PNG");
+}
+
 for (const path of htmlFiles) {
   const name = relative(dist, path);
   const html = readFileSync(path, "utf8");
@@ -112,6 +162,17 @@ for (const path of htmlFiles) {
   ].filter(
     (match) =>
       attributes(match[1]).type?.toLowerCase() === "application/ld+json"
+  );
+  const links = tags(html, "link");
+  const favicon = links.find(
+    ({ attributes: value }) => value.rel?.toLowerCase() === "icon"
+  );
+  const appleIcon = links.find(
+    ({ attributes: value }) =>
+      value.rel?.toLowerCase() === "apple-touch-icon"
+  );
+  const author = tags(html, "a").find(
+    ({ attributes: value }) => value["data-nobsprompt-author"] === "true"
   );
 
   if (!title) {
@@ -168,6 +229,27 @@ for (const path of htmlFiles) {
         fail(`${name} contains invalid JSON-LD`);
       }
     }
+  }
+  if (!favicon?.attributes.href?.endsWith("/icon.svg")) {
+    fail(`${name} has an invalid favicon link`);
+  }
+  if (!appleIcon?.attributes.href?.endsWith("/apple-touch-icon.png")) {
+    fail(`${name} has an invalid Apple touch icon link`);
+  }
+  if (
+    !html.includes('data-nobsprompt-brand="true"') ||
+    !/<span\b[^>]*data-nobsprompt-logo="true"[^>]*>[\s\S]*?<svg\b/iu.test(
+      html
+    )
+  ) {
+    fail(`${name} is missing the inline nobsprompt header brand`);
+  }
+  if (
+    author?.attributes.href !== "https://neg4n.dev/" ||
+    author.attributes.target !== "_blank" ||
+    !author.attributes.rel?.split(/\s+/u).includes("author")
+  ) {
+    fail(`${name} has an invalid creator credit`);
   }
 
   if ((html.match(/<h1\b/giu) ?? []).length !== 1) {

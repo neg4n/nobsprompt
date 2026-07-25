@@ -1,3 +1,11 @@
+<a href="https://nobsprompt.pages.dev">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs-website/public/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs-website/public/logo-light.svg">
+    <img align="right" alt="nobsprompt logo" height="150" src="docs-website/public/logo-light.svg" width="150">
+  </picture>
+</a>
+
 # nobsprompt
 
 **nobsprompt**, the No BS prompt, is an extremely lightweight prompt backend

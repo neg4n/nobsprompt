@@ -4,6 +4,10 @@ export default defineConfig({
   title: "nobsprompt",
   description:
     "An extremely lightweight prompt backend for macOS and Zsh, with an opinionated prompt ready to use.",
+  logo: {
+    image: "/logo.svg",
+    text: "nobsprompt",
+  },
   content: {
     root: "../docs",
   },
@@ -42,6 +46,7 @@ export default defineConfig({
     },
     og: {
       enabled: true,
+      logo: "/logo.svg",
     },
     sitemap: true,
     robots: true,

@@ -1,61 +1,53 @@
 # Documentation brand assets
 
-This file maps the future nobsprompt logo package to stable website paths.
-Keep the filenames below when replacing the current placeholder so the site
-configuration and metadata remain predictable.
+The editable source of the nobsprompt mark is
+`assets/nobsprompt.svg`. Its background is transparent. The foreground follows
+the system color scheme when loaded as an image and the Blume theme when
+inlined in the documentation header.
 
 ## Asset map
 
-| Purpose | Target path | Format and guidance | Wiring |
-| --- | --- | --- | --- |
-| Header mark | `public/logo.svg` | Transparent SVG with a tight viewBox and good contrast at 24 px | Set `logo.image` in `blume.config.ts` |
-| Browser favicon | `public/icon.svg` | Square SVG that remains legible at 16 px | Auto-detected by Blume |
-| Apple touch icon | `public/apple-touch-icon.png` | 180 by 180 px PNG with an opaque background | Auto-detected by Blume |
-| Social card mark | `public/og-logo.svg` | Simple transparent SVG suitable for a 1200 by 630 px card | Set `seo.og.logo` in `blume.config.ts` |
+| Purpose | Generated path | Notes |
+| --- | --- | --- |
+| Header and Open Graph mark | `public/logo.svg` | Adaptive transparent SVG inlined by Blume in the header and used in generated social cards |
+| Browser favicon | `public/icon.svg` | Byte-identical to `logo.svg` and auto-detected by Blume |
+| GitHub light-theme mark | `public/logo-light.svg` | Static near-black foreground for README `<picture>` fallback and light mode |
+| GitHub dark-theme mark | `public/logo-dark.svg` | Static white foreground for README dark mode |
+| Apple touch icon | `public/apple-touch-icon.png` | Opaque 180 by 180 px PNG, auto-detected by Blume |
 
-The existing `public/icon.svg` is a temporary placeholder. Replace it only
-when the final mark is ready.
+The source view box is 2048 by 2048. The paths are fitted to all four edges
+instead of carrying internal canvas padding. The foreground and green paths
+share one preserved transform, keeping their common edge aligned without
+changing either path's width.
 
-## Header configuration
+## Updating the logo
 
-After adding `public/logo.svg`, configure the header without baking the project
-name into the image:
+1. Edit `assets/nobsprompt.svg`.
+2. Keep the 2048 by 2048 view box, transparent background, adaptive foreground
+   rules, and shared path transform.
+3. Generate optimized public assets:
 
-```ts
-logo: {
-  image: {
-    light: "/logo.svg",
-    dark: "/logo.svg",
-    alt: "nobsprompt",
-  },
-  text: "nobsprompt",
-},
-```
+   ```sh
+   pnpm run brand:build
+   ```
 
-If the logo needs separate light and dark artwork, save the variants as
-`public/logo-light.svg` and `public/logo-dark.svg`, then update the two paths.
+4. Validate the assets and the complete static site:
 
-## Social card configuration
+   ```sh
+   pnpm run docs:ci
+   ```
 
-After adding `public/og-logo.svg`, extend the existing Open Graph settings:
+`brand:check` is part of the CI command. It fails when a generated asset is
+missing or differs from the canonical SVG source.
 
-```ts
-seo: {
-  og: {
-    enabled: true,
-    logo: "/og-logo.svg",
-  },
-},
-```
+## Website wiring
 
-Blume will continue generating a 1200 by 630 px card for every documentation
-page. The logo file is only the mark placed within those cards.
-
-## Replacement checklist
-
-1. Add the final files under `public/` using the paths in the map.
-2. Add the header and Open Graph configuration only after their files exist.
-3. Run `pnpm run docs:ci`.
-4. Inspect the header in light and dark modes.
-5. Inspect one generated file under `dist/og/`.
-6. Confirm the favicon and Apple touch icon tags in `dist/index.html`.
+- `blume.config.ts` assigns `public/logo.svg` to the site header and generated
+  Open Graph cards.
+- `components/Logo.astro` renders the 24 px mobile and 32 px desktop mark,
+  project name, and author credit without client-side JavaScript.
+- Blume discovers `icon.svg` and `apple-touch-icon.png` automatically.
+- The README uses GitHub's supported `<picture>` pattern to select the static
+  light or dark variant.
+- `scripts/verify-static-output.mjs` checks the emitted files, favicon links,
+  header markup, and author link after a production build.

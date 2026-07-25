@@ -1,0 +1,55 @@
+---
+import type { BlumeLogo } from "blume";
+import { withBase } from "blume/components/islands/base-path.ts";
+
+interface Props {
+  site: { title: string };
+  logo?: BlumeLogo | null;
+}
+
+const { site, logo } = Astro.props;
+const brandHref = logo?.href ?? "/";
+const brandText = logo?.text ?? site.title;
+---
+
+<div
+  class="grid min-w-0 grid-cols-[1.5rem_minmax(0,1fr)] grid-rows-[1rem_0.625rem] items-center gap-x-2 gap-y-1 sm:grid-cols-[2rem_minmax(0,1fr)]"
+  data-nobsprompt-brand="true"
+>
+  {
+    logo?.svg && (
+      <span
+        aria-hidden="true"
+        class="row-span-2 inline-flex size-6 shrink-0 items-center [&>svg]:size-6 sm:size-8 sm:[&>svg]:size-8"
+        data-nobsprompt-logo="true"
+        set:html={logo.svg}
+      />
+    )
+  }
+  {
+    brandText && (
+      <a
+        aria-label={`${brandText} home`}
+        class="col-start-2 row-start-1 truncate font-semibold text-base leading-4 text-foreground"
+        href={withBase(brandHref)}
+      >
+        {brandText}
+      </a>
+    )
+  }
+  <span
+    class="col-start-2 row-start-2 whitespace-nowrap text-[10px] leading-none text-muted-foreground"
+  >
+    <span class="hidden sm:inline">crafted with love by </span>
+    <span class="sm:hidden">by </span>
+    <a
+      class="font-medium text-muted-foreground underline decoration-border underline-offset-2 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-nobsprompt-author="true"
+      href="https://neg4n.dev/"
+      rel="author noreferrer"
+      target="_blank"
+    >
+      neg4n.dev
+    </a>
+  </span>
+</div>

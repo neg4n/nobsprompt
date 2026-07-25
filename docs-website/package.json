@@ -7,6 +7,8 @@
   },
   "packageManager": "pnpm@10.34.5",
   "scripts": {
+    "brand:build": "node scripts/brand-assets.mjs --write",
+    "brand:check": "node scripts/brand-assets.mjs --check",
     "dev": "ASTRO_TELEMETRY_DISABLED=1 blume dev",
     "build": "ASTRO_TELEMETRY_DISABLED=1 blume build",
     "docs:dev": "ASTRO_TELEMETRY_DISABLED=1 blume dev",
@@ -15,12 +17,14 @@
     "docs:build": "ASTRO_TELEMETRY_DISABLED=1 blume build",
     "docs:verify": "node scripts/verify-static-output.mjs",
     "docs:audit": "blume audit --fail-on warning",
-    "docs:ci": "ASTRO_TELEMETRY_DISABLED=1 blume check --strict && blume validate --strict && ASTRO_TELEMETRY_DISABLED=1 blume build && node scripts/verify-static-output.mjs && blume audit --fail-on warning"
+    "docs:ci": "node scripts/brand-assets.mjs --check && ASTRO_TELEMETRY_DISABLED=1 blume check --strict && blume validate --strict && ASTRO_TELEMETRY_DISABLED=1 blume build && node scripts/verify-static-output.mjs && blume audit --fail-on warning"
   },
   "dependencies": {
     "blume": "1.1.3"
   },
   "devDependencies": {
-    "astro": "7.1.3"
+    "astro": "7.1.3",
+    "sharp": "0.35.3",
+    "svgo": "4.0.2"
   }
 }
