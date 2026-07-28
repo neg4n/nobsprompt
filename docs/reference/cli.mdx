@@ -35,8 +35,8 @@ eval "$(nbsp init zsh --detached)"
 `PROMPT` or `RPROMPT`. It publishes `NBSP_DATA`,
 `nbsp_data_update_functions`, and `nbsp_prompt_escape`.
 
-`--autosuggest` is independent of prompt mode. It adds optional history ghost
-text and the bounded one-level directory fallback described in
+`--autosuggest` is independent of prompt mode. It adds ordinary history ghost
+text and bounded, live path-aware `cd` suggestions described in
 [Autosuggestions](/reference/autosuggestions). Options may appear in either
 order.
 
@@ -102,7 +102,8 @@ nbsp cache clear
 ## `dirs`
 
 Emit a bounded snapshot of immediate child directories for the Zsh
-autosuggestion worker:
+autosuggestion worker. For a nested path this is the resolved typed parent, not
+the shell's entire working tree:
 
 ```sh
 nbsp dirs --cwd "$PWD" --format nul

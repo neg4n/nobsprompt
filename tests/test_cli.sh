@@ -40,6 +40,47 @@ conflict_result=$(zsh -dfc '
   fi
 ' _ "$nbsp")
 test "$conflict_result" = skipped
+conflict_message=$(zsh -dfc '
+  _zsh_autosuggest_start() { :; }
+  eval "$("$1" init zsh --autosuggest)"
+' _ "$nbsp" 2>&1 >/dev/null)
+test "$conflict_message" = 'nbsp: --autosuggest disabled because another autosuggestion plugin is active; use only one engine or remove --autosuggest'
+mkdir -p "$tmp/home/Desktop/programming" "$tmp/path parser/space dir"
+zsh -dfc '
+  autoload -Uz add-zsh-hook
+  cd "$2" || exit 10
+  eval "$("$1" init zsh --autosuggest)"
+  HOME=$3
+  cdpath=()
+  check_path() {
+    local line=$1 expected_root=$2 expected_leaf=$3
+    local -a reply
+    _nbsp_as_parse_cd "$line" || exit 11
+    [[ ${reply[1]-} == $expected_root && ${reply[2]-} == $expected_leaf ]] || exit 12
+  }
+  check_rejected() {
+    local -a reply
+    _nbsp_as_parse_cd "$1" && exit 13
+    return 0
+  }
+  check_path "cd relative" "$PWD" relative
+  check_path "cd ./alpha/be" "$PWD/./alpha" be
+  check_path "cd ../pa" "$PWD/.." pa
+  check_path "cd /tmp/ab" /tmp ab
+  check_path "cd ~/Desktop/programming/w" "$3/Desktop/programming" w
+  check_path "cd \"space dir\"/n" "$PWD/space dir" n
+  check_path "cd space\\ dir/n" "$PWD/space dir" n
+  check_path "cd -- -dash" "$PWD" -dash
+  check_rejected "cd \$HOME/w"
+  check_rejected "cd \$(pwd)/w"
+  check_rejected "cd foo*"
+  check_rejected "cd ~someone/w"
+  check_rejected "cd \"unterminated"
+  check_rejected "cd one two"
+  cdpath=( "$3/Desktop/programming" )
+  check_rejected "cd relative"
+  check_path "cd ./relative" "$PWD/." relative
+' _ "$nbsp" "$tmp/path parser" "$tmp/home"
 if "$nbsp" init zsh --autosuggest --autosuggest >/dev/null 2>&1; then
   echo 'duplicate autosuggest flag unexpectedly succeeded' >&2
   exit 1

@@ -10,8 +10,9 @@ deliberately asynchronous and is therefore measured for correctness and
 bounded execution rather than included in foreground latency.
 
 The optional autosuggestion engine is also outside the default prompt path.
-History lookup runs inside Zsh; its directory worker starts only after a
-history miss for an eligible `cd` prefix.
+History lookup runs inside Zsh. A safely parseable `cd` path starts one bounded
+directory worker for its typed parent; the live snapshot prevents stale history
+from becoming a navigation suggestion.
 
 ## Measurement snapshot
 
@@ -28,13 +29,14 @@ be treated as noise.
 | Local `-mcpu=native` + LTO | 1.477 ms | not repeated | 53 KiB |
 
 The July 28 autosuggestion implementation changed the optimized arm64 binary
-from 54,216 to 54,872 bytes. Both binaries occupy the same Mach-O segment
-pages. Embedded Zsh sources use a bounded build-time LZSS representation, so
-adding the 8.8 KiB optional engine costs 656 bytes in the final executable
-rather than another 16 KiB segment page.
+from 54,216 to 54,872 bytes. The later live-path validation and nested-parent
+upgrade increased its embedded Zsh source from 11,606 to 16,892 bytes while the
+optimized executable remained 54,872 bytes. Both binaries occupy the same
+Mach-O segment pages; a bounded build-time LZSS representation prevents source
+size from translating directly into installed size.
 
 On the same development Mac, 3,000 fresh `nbsp dirs` invocations from the
-project root measured 1.611 ms p95. The worker is asynchronous from ZLE and its
+project root measured 1.495 ms p95. The worker is asynchronous from ZLE and its
 own filesystem work is additionally terminated after 50 ms.
 
 macOS process accounting for the baseline and optimized release binary:
@@ -64,8 +66,9 @@ room to materially improve the observed wall time.
 - NVM version parsing is allocation-free in the foreground renderer.
 - Hidden symbols, dead stripping, `-O3`, and LTO keep the executable small.
 - Autosuggestions reuse the current candidate while the typed prefix still
-  matches. A directory snapshot is sorted once and queried by binary search;
-  no filesystem syscall occurs on the per-key redraw path.
+  matches. One live directory snapshot is cached by typed parent, sorted once,
+  and queried by binary search; no filesystem syscall occurs on the per-key
+  redraw path.
 - Git remains outside the foreground path, uses `posix_spawnp`, has a hard
   timeout and output cap, and atomically publishes only complete snapshots.
 
@@ -94,9 +97,10 @@ wrapper preservation, external-editor buffer and Unicode cursor round trips,
 child file-descriptor isolation, complete stdout/stderr streams, and
 verification that foreground rendering and data output never execute Git.
 
-Autosuggestion coverage separately verifies history priority, a full history
-ring, unique and ambiguous directory prefixes, shell escaping, async snapshot
-publication, owned versus foreign `POSTDISPLAY`, mid-buffer suppression, Right
+Autosuggestion coverage separately verifies ordinary history, stale-history
+rejection, live ranking for unique and ambiguous nested paths, tilde and quoted
+parents, shell escaping, async snapshot publication, early and late plugin
+conflicts, owned versus foreign `POSTDISPLAY`, mid-buffer suppression, Right
 Arrow acceptance, and preservation of custom bindings.
 
 Apple's ASan runtime does not implement LeakSanitizer. Requesting

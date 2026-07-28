@@ -3,7 +3,7 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
   zmodload zsh/parameter
 
   if (( $+functions[_zsh_autosuggest_start] || $+widgets[autosuggest-accept] )); then
-    print -ru2 -- 'nbsp: autosuggestions already provided by another ZLE integration'
+    print -ru2 -- 'nbsp: --autosuggest disabled because another autosuggestion plugin is active; use only one engine or remove --autosuggest'
   else
     autoload -Uz add-zle-hook-widget is-at-least
     zmodload zsh/system 2>/dev/null
@@ -16,9 +16,12 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
     typeset -gi _nbsp_as_scan_schema=0 _nbsp_as_scan_complete=0
     typeset -gi _nbsp_as_scan_have_key=0
     typeset -gi _nbsp_as_disabled=0
+    typeset -gi _nbsp_as_conflict_warned=0
     typeset -gi _nbsp_as_highlight_memo=0
-    typeset -g _nbsp_as_full= _nbsp_as_owned= _nbsp_as_highlight=
-    typeset -g _nbsp_as_scan_state=empty _nbsp_as_scan_pwd= _nbsp_as_scan_key=
+    typeset -g _nbsp_as_full= _nbsp_as_full_kind= _nbsp_as_owned=
+    typeset -g _nbsp_as_highlight=
+    typeset -g _nbsp_as_scan_state=empty _nbsp_as_scan_pwd=
+    typeset -g _nbsp_as_scan_root= _nbsp_as_scan_key=
     typeset -g _nbsp_as_executable=${commands[nbsp]-}
     is-at-least 5.9 && _nbsp_as_highlight_memo=1
 
@@ -108,8 +111,10 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       _nbsp_as_cancel_scan
       _nbsp_as_dirs=()
       _nbsp_as_scan_pwd=
+      _nbsp_as_scan_root=
       _nbsp_as_scan_state=empty
       _nbsp_as_full=
+      _nbsp_as_full_kind=
     }
 
     _nbsp_as_scan_done() {
@@ -152,7 +157,7 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       if (( _nbsp_as_scan_complete )); then
         _nbsp_as_close_scan
         _nbsp_as_scan_pid=0
-        if [[ $PWD == $_nbsp_as_scan_pwd ]]; then
+        if [[ $PWD == $_nbsp_as_scan_pwd && -n $_nbsp_as_scan_root ]]; then
           _nbsp_as_dirs=( "${(@)_nbsp_as_scan_dirs}" )
           _nbsp_as_scan_state=ready
         else
@@ -169,9 +174,19 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
     }
 
     _nbsp_as_schedule_scan() {
-      [[ $_nbsp_as_scan_state == empty && -n $_nbsp_as_executable ]] || return
+      local root=$1
+      [[ -n $root && -n $_nbsp_as_executable ]] || return
+      if [[ $_nbsp_as_scan_root == $root &&
+          ( $_nbsp_as_scan_state == loading || $_nbsp_as_scan_state == ready ||
+            $_nbsp_as_scan_state == failed ) ]]; then
+        return
+      fi
+      _nbsp_as_cancel_scan
+      _nbsp_as_dirs=()
+      _nbsp_as_scan_state=empty
       local -i raw_fd=-1
       _nbsp_as_scan_pwd=$PWD
+      _nbsp_as_scan_root=$root
       _nbsp_as_scan_schema=0
       _nbsp_as_scan_complete=0
       _nbsp_as_scan_have_key=0
@@ -180,7 +195,7 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       _nbsp_as_scan_state=loading
       exec {raw_fd}< <(
         print -r -- $sysparams[pid]
-        exec "$_nbsp_as_executable" dirs --cwd "$_nbsp_as_scan_pwd" --format nul 2>/dev/null
+        exec "$_nbsp_as_executable" dirs --cwd "$_nbsp_as_scan_root" --format nul 2>/dev/null
       )
       if ! IFS= read -r -u "$raw_fd" _nbsp_as_scan_pid ||
           [[ $_nbsp_as_scan_pid != <-> || $_nbsp_as_scan_pid -le 0 ]]; then
@@ -202,7 +217,7 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
     }
 
     _nbsp_as_offer() {
-      local full=$1 suffix
+      local full=$1 kind=${2:-history} suffix
       [[ -n $full && $full != *$'\n'* && $full == "$BUFFER"* &&
           $full != "$BUFFER" ]] || return 1
       (( $#full <= 4096 )) || return 1
@@ -210,6 +225,7 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       POSTDISPLAY=$suffix
       _nbsp_as_owned=$suffix
       _nbsp_as_full=$full
+      _nbsp_as_full_kind=$kind
       _nbsp_as_highlight="$#BUFFER $(($#BUFFER + $#suffix)) $NBSP_AUTOSUGGEST_HIGHLIGHT_STYLE"
       if (( _nbsp_as_highlight_memo )); then
         _nbsp_as_highlight+=' memo=nbsp-autosuggest'
@@ -218,24 +234,141 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       return 0
     }
 
-    _nbsp_as_directory_full() {
-      local argument prefix lead= candidate escaped
-      local LC_ALL=C
-      local -i low=1 high=$#_nbsp_as_dirs middle
-      [[ $BUFFER == 'cd '* ]] || return 1
-      argument=${BUFFER[4,-1]}
-      [[ -n $argument ]] || return 1
-      if [[ $argument == ./* ]]; then
-        lead=./
-        prefix=${argument[3,-1]}
-      else
-        prefix=$argument
-      fi
-      [[ -n $prefix && $prefix != -* && $prefix != */* &&
-          ${(q)prefix} == $prefix ]] || return 1
+    _nbsp_as_static_quotes_complete() {
+      local value=$1 character state=plain
+      local -i index escaped=0
+      for (( index = 1; index <= $#value; ++index )); do
+        character=$value[index]
+        if (( escaped )); then
+          escaped=0
+          continue
+        fi
+        if [[ $state == single ]]; then
+          [[ $character == "'" ]] && state=plain
+        elif [[ $state == double ]]; then
+          if [[ $character == '\\' ]]; then
+            escaped=1
+          elif [[ $character == '"' ]]; then
+            state=plain
+          fi
+        elif [[ $character == '\\' ]]; then
+          escaped=1
+        elif [[ $character == "'" ]]; then
+          state=single
+        elif [[ $character == '"' ]]; then
+          state=double
+        fi
+      done
+      [[ $state == plain && escaped -eq 0 ]]
+    }
 
-      if [[ $_nbsp_as_scan_state != ready || $_nbsp_as_scan_pwd != $PWD ]]; then
-        _nbsp_as_schedule_scan
+    _nbsp_as_parse_cd() {
+      emulate -L zsh
+      local line=$1 raw_path path parent relative
+      local -a words
+      local -i has_double_dash=0 expand_home=0
+      reply=()
+
+      if [[ $line == 'cd ' || $line == 'cd -- ' ]]; then
+        reply=( "$PWD" '' )
+        return 0
+      fi
+      words=( ${(z)line} ) 2>/dev/null || return 1
+      if (( $#words == 2 )) && [[ ${(Q)words[1]} == cd ]]; then
+        raw_path=$words[2]
+      elif (( $#words == 3 )) && [[ ${(Q)words[1]} == cd &&
+          ${(Q)words[2]} == -- ]]; then
+        raw_path=$words[3]
+        has_double_dash=1
+      else
+        return 1
+      fi
+      [[ -n $raw_path ]] || return 1
+      case $raw_path in
+        *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*']'*|*'{'*|*'}'*|*'('*|*')'*|\
+        *'<'*|*'>'*|*'|'*|*'&'*|*';'*) return 1 ;;
+      esac
+
+      _nbsp_as_static_quotes_complete "$raw_path" || return 1
+      path=${(Q)raw_path}
+      [[ -n $path ]] || return 1
+      (( has_double_dash )) || [[ $path != -* ]] || return 1
+      [[ $raw_path != '='* ]] || return 1
+      if [[ $raw_path == '~' || $raw_path == '~/'* ]]; then
+        expand_home=1
+      elif [[ $raw_path == '~'* ]]; then
+        return 1
+      fi
+
+      if [[ $path != */* ]]; then
+        if (( ${+cdpath} && $#cdpath > 0 )); then
+          return 1
+        fi
+        if (( expand_home )); then
+          reply=( "$HOME" '' )
+        else
+          reply=( "$PWD" "$path" )
+        fi
+        return 0
+      fi
+
+      if (( expand_home )); then
+        relative=${path#\~/}
+        if [[ $relative == */* ]]; then
+          parent=${relative%/*}
+          reply=( "$HOME/$parent" "${relative##*/}" )
+        else
+          reply=( "$HOME" "$relative" )
+        fi
+      elif [[ $path == /* ]]; then
+        parent=${path%/*}
+        reply=( "${parent:-/}" "${path##*/}" )
+      else
+        parent=${path%/*}
+        reply=( "$PWD/$parent" "${path##*/}" )
+      fi
+      return 0
+    }
+
+    _nbsp_as_rank_directory() {
+      local root=$1 prefix=$2
+      local -i first=$3 last=$4 low high middle
+      local historical candidate
+      local -a parsed reply
+      local LC_ALL=C
+      for historical in "${(@)_nbsp_as_history}"; do
+        [[ $historical == "$BUFFER"* ]] || continue
+        reply=()
+        _nbsp_as_parse_cd "$historical" || continue
+        parsed=( "${(@)reply}" )
+        [[ ${parsed[1]-} == $root && ${parsed[2]-} == "$prefix"* ]] || continue
+        candidate=${parsed[2]}
+        low=$first
+        high=$last
+        while (( low <= high )); do
+          middle=$(( (low + high) / 2 ))
+          if [[ ${_nbsp_as_dirs[middle]} < $candidate ]]; then
+            low=$(( middle + 1 ))
+          elif [[ ${_nbsp_as_dirs[middle]} > $candidate ]]; then
+            high=$(( middle - 1 ))
+          else
+            REPLY=$candidate
+            return 0
+          fi
+        done
+      done
+      return 1
+    }
+
+    _nbsp_as_directory_full() {
+      local root=$1 prefix=$2 candidate remainder escaped
+      local LC_ALL=C
+      local -i low=1 high=$#_nbsp_as_dirs middle first last
+      [[ -n $root && -n $prefix ]] || return 1
+
+      if [[ $_nbsp_as_scan_root != $root || $_nbsp_as_scan_pwd != $PWD ||
+          $_nbsp_as_scan_state != ready ]]; then
+        _nbsp_as_schedule_scan "$root"
         return 1
       fi
       while (( low <= high )); do
@@ -247,14 +380,22 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
         fi
       done
       (( low <= $#_nbsp_as_dirs )) || return 1
-      candidate=${_nbsp_as_dirs[low]}
-      [[ $candidate == "$prefix"* ]] || return 1
-      if (( low < $#_nbsp_as_dirs )) &&
-          [[ ${_nbsp_as_dirs[low + 1]} == "$prefix"* ]]; then
-        return 1
+      [[ ${_nbsp_as_dirs[low]} == "$prefix"* ]] || return 1
+      first=$low
+      last=$first
+      while (( last < $#_nbsp_as_dirs )) &&
+          [[ ${_nbsp_as_dirs[last + 1]} == "$prefix"* ]]; do
+        (( ++last ))
+      done
+      if (( first == last )); then
+        candidate=${_nbsp_as_dirs[first]}
+      else
+        _nbsp_as_rank_directory "$root" "$prefix" "$first" "$last" || return 1
+        candidate=$REPLY
       fi
-      escaped=${(q)candidate}
-      REPLY="cd ${lead}${escaped}/"
+      remainder=${candidate[$(( $#prefix + 1 )),-1]}
+      escaped=${(q)remainder}
+      REPLY="$BUFFER$escaped/"
       return 0
     }
 
@@ -268,27 +409,41 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
         _nbsp_as_disabled=1
         _nbsp_as_cancel_scan
         _nbsp_as_full=
+        _nbsp_as_full_kind=
         return
       fi
       (( !_nbsp_as_disabled && $#BUFFER > 0 && $#BUFFER <= 256 &&
           CURSOR == $#BUFFER && !REGION_ACTIVE )) || return
       [[ $BUFFER != *$'\n'* && $BUFFER != [[:space:]]* ]] || return
 
+      local -a parsed reply
+      local -i path_mode=0
+      reply=()
+      if _nbsp_as_parse_cd "$BUFFER"; then
+        parsed=( "${(@)reply}" )
+        path_mode=1
+      fi
+
       if [[ -n $_nbsp_as_full && $_nbsp_as_full == "$BUFFER"* ]]; then
-        _nbsp_as_offer "$_nbsp_as_full"
-        return
+        if [[ $_nbsp_as_full_kind == directory || path_mode -eq 0 ]]; then
+          _nbsp_as_offer "$_nbsp_as_full" "$_nbsp_as_full_kind"
+          return
+        fi
       fi
       _nbsp_as_full=
+      _nbsp_as_full_kind=
       (( PENDING == 0 && ${KEYS_QUEUED_COUNT:-0} == 0 )) || return
+
+      if (( path_mode )); then
+        if _nbsp_as_directory_full "${parsed[1]}" "${parsed[2]}"; then
+          _nbsp_as_offer "$REPLY" directory
+        fi
+        return
+      fi
 
       local pattern="${(b)BUFFER}*" suggestion
       suggestion=${_nbsp_as_history[(r)$pattern]}
-      if _nbsp_as_offer "$suggestion"; then
-        return
-      fi
-      if _nbsp_as_directory_full; then
-        _nbsp_as_offer "$REPLY"
-      fi
+      _nbsp_as_offer "$suggestion" history
     }
 
     _nbsp_as_line_finish() {
@@ -296,11 +451,22 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       _nbsp_as_clear_display
       _nbsp_as_cancel_scan
       _nbsp_as_full=
+      _nbsp_as_full_kind=
     }
 
     _nbsp_as_precmd() {
       emulate -L zsh
       local latest=${history[$((HISTCMD - 1))]-}
+      if (( $+functions[_zsh_autosuggest_start] ||
+          $+widgets[autosuggest-accept] )); then
+        _nbsp_as_disabled=1
+        _nbsp_as_invalidate_dirs
+        if (( !_nbsp_as_conflict_warned )); then
+          print -ru2 -- 'nbsp: --autosuggest disabled because another autosuggestion plugin is active; use only one engine or remove --autosuggest'
+          _nbsp_as_conflict_warned=1
+        fi
+        return
+      fi
       if (( $#history < _nbsp_as_history_count ||
           $#history > _nbsp_as_history_count + 1 )); then
         _nbsp_as_rebuild_history
@@ -322,6 +488,7 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
         BUFFER+=$suffix
         CURSOR=$#BUFFER
         _nbsp_as_full=
+        _nbsp_as_full_kind=
         zle -R
       else
         zle .forward-char
@@ -335,6 +502,7 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
         _nbsp_as_clear_display
         _nbsp_as_cancel_scan
         _nbsp_as_full=
+        _nbsp_as_full_kind=
       fi
       zle -R
     }

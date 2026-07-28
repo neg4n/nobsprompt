@@ -19,18 +19,19 @@ without blocking input.
 Initialize detached mode in `~/.zshrc`:
 
 ```zsh
-eval "$(nbsp init zsh --detached)"
+eval "$(nbsp init zsh --detached --autosuggest)"
 ```
 
 The first mode initialized in a shell wins. Put initialization after NVM setup
-so `node_version` reflects the active version.
+so `node_version` reflects the active version. Omit `--autosuggest` when another
+ghost-text plugin is already active.
 
 ## Minimal prompt
 
 Add this to `~/.zshrc`:
 
 ```zsh
-eval "$(nbsp init zsh --detached)"
+eval "$(nbsp init zsh --detached --autosuggest)"
 
 minimal_prompt() {
   local path branch=

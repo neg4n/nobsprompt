@@ -1,9 +1,9 @@
 ---
 title: Autosuggestions
-description: Enable bounded fish-like history ghost text and a safe one-level directory fallback without replacing Zsh completion.
+description: Use recent-history ghost text and live, path-aware directory suggestions without stale cd targets or foreground filesystem work.
 ---
 
-Autosuggestions are optional and work with either prompt mode:
+The recommended setup enables autosuggestions with either prompt mode:
 
 ```zsh
 eval "$(nbsp init zsh --autosuggest)"
@@ -13,45 +13,85 @@ This is intentionally smaller than fish completion. It predicts one complete
 line; it does not generate option descriptions, parse command grammars, or
 replace Tab completion.
 
+:::warning[Use one autosuggestion engine]
+Do not combine this with `zsh-autosuggestions` or another plugin that owns ghost
+text. If one is already active, omit `--autosuggest`. Nobsprompt detects common
+early and late conflicts, disables only its autosuggestion engine, and prints a
+single actionable warning; the prompt continues to work.
+:::
+
 ## Selection order
 
-For a nonempty, single-line buffer with the cursor at the end:
+Ordinary commands search the newest 4,096 in-memory Zsh history entries for an
+exact, case-sensitive prefix. A chosen candidate is reused while subsequent
+input still matches it.
 
-1. search the newest 4,096 in-memory Zsh history entries for an exact,
-   case-sensitive prefix;
-2. reuse that candidate while subsequent input still matches it;
-3. only after a history miss, consider a simple `cd prefix` or `cd ./prefix`;
-4. show a directory only when exactly one immediate child matches.
+Safely parseable `cd` paths use a different rule: the live directory snapshot
+is authoritative and history is only a ranking signal. Nobsprompt:
 
-`cd al` therefore stays empty when both `alpha/` and `alpine/` exist. Ordinary
-Tab completion remains available for the ambiguous case and for every syntax
-outside this narrow grammar.
+1. resolves the parent implied by the typed path;
+2. asynchronously reads that parent's immediate child directories;
+3. offers the single live prefix match; or
+4. when several live children match, chooses the newest one also represented
+   by matching `cd` history.
+
+A historical directory missing when the parent snapshot is captured is never
+offered. For example, if history contains
+`cd ~/Desktop/programming/work` but only `web/` exists, typing
+`cd ~/Desktop/programming/w` suggests `eb/`, not `ork`.
+
+`cd al` stays empty when both `alpha/` and `alpine/` exist and neither has a
+matching history rank. Ordinary Tab completion remains available for every
+ambiguous or unsupported case.
 
 Suggestions are suppressed for multiline input or history results, leading
 whitespace, selections, a cursor before the end of the buffer, prefixes longer
 than 256 characters, complete results longer than 4,096 characters, and queued
-input. History always wins over a directory with the same prefix.
+input.
+
+## Supported directory paths
+
+Path-aware suggestions accept one static operand in `cd PATH` or `cd -- PATH`.
+They support:
+
+- immediate and nested relative paths such as `cd src/n`;
+- explicit `./` and `../` parents;
+- absolute paths;
+- `~/` paths;
+- closed quotes and backslash-escaped spaces.
+
+The parser performs lexical splitting and quote removal only. It never evaluates
+the command. Variables, command substitutions, globs, brace expansion, named
+directories such as `~user`, operators, unmatched quotes, and multiple operands
+remain ordinary history or Tab-completion territory.
+
+When `CDPATH` is nonempty, a bare relative name is not treated as `$PWD`-local;
+use `./name` for live path suggestions. A bare path without the `cd` command is
+also ordinary command history because Zsh would try to execute it.
 
 ## Directory cost and safety
 
-The filesystem is never traversed on each keypress. The first eligible history
-miss starts one asynchronous `nbsp dirs` process for the current prompt and
-working directory. Its result is published only after a complete NUL-framed
-snapshot arrives. The worker has hard limits of:
+The filesystem is never traversed on each keypress. The first eligible path
+starts one asynchronous `nbsp dirs` process for its resolved parent. Nested
+input such as `~/Desktop/programming/w` still reads only the immediate children
+of `~/Desktop/programming`; it does not walk from the home directory. The result
+is published only after a complete NUL-framed snapshot arrives. The worker has
+hard limits of:
 
 - 50 ms;
 - 1,024 immediate child directories;
 - 64 KiB of records.
 
 It reads one level only, includes directory symlinks, and performs no recursive
-walk. A timeout, malformed frame, changed working directory, closed descriptor,
-or exceeded limit discards the partial snapshot and leaves the command line
-untouched. A valid snapshot is sorted once; subsequent prefix checks use binary
-search without filesystem syscalls.
+walk. A timeout, malformed frame, changed working directory, changed typed
+parent, closed descriptor, or exceeded limit discards the partial snapshot and
+shows no `cd` suggestion. It never falls back to an unvalidated history path.
 
-Only an unquoted, metacharacter-free prefix is accepted as input to the
-directory fallback. The chosen directory name is shell-quoted before it is
-displayed or inserted. Names are data, never evaluated as Zsh source.
+A valid snapshot is sorted once and keyed by its parent. Prefix and history
+membership checks use binary search without filesystem syscalls. The snapshot
+is reused while the parent remains unchanged and replaced when input moves to a
+different parent. Appended directory text is shell-quoted before display or
+insertion; names are data, never evaluated as Zsh source.
 
 ## Accepting and controlling suggestions
 
@@ -81,10 +121,14 @@ eval "$(nbsp init zsh --autosuggest)"
 
 ## Plugin compatibility
 
-Do not run two autosuggestion engines. If `zsh-autosuggestions` is already
-loaded, nobsprompt reports the conflict and skips its own engine. If that
-plugin appears later, nobsprompt disables its engine on the next redraw. It
-does not wrap every widget or overwrite custom Right Arrow bindings.
+If another engine is already loaded, nobsprompt reports the conflict and skips
+its own engine. If one appears later, nobsprompt disables itself and warns once
+at the next safe `precmd` boundary. Redraw-time detection remains silent and
+fail-closed so a warning cannot corrupt the active command line.
+
+Nobsprompt does not wrap every widget or overwrite custom Right Arrow bindings.
+Unknown integrations that also own ZLE `POSTDISPLAY` are not guaranteed to be
+compatible, so configure only one ghost-text provider.
 
 Without `--autosuggest`, the emitted Zsh integration and prompt behavior are
 unchanged.

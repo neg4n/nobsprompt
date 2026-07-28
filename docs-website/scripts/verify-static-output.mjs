@@ -501,9 +501,22 @@ for (const token of [
 if (
   !homepageMarkdown.includes("## Features") ||
   !homepageMarkdown.includes("54 KiB") ||
+  !homepageMarkdown.includes("live, path-aware `cd` suggestions") ||
+  !homepageMarkdown.includes('href="/reference/autosuggestions"') ||
   homepageMarkdown.includes("## What the backend provides")
 ) {
   fail("the homepage does not present the revised Features section");
+}
+for (const token of [
+  'eval "$(nbsp init zsh --autosuggest)"',
+  'eval "$(nbsp init zsh --detached --autosuggest)"',
+  "Use one autosuggestion engine",
+  "zsh-autosuggestions",
+  "omit `--autosuggest`",
+]) {
+  if (!normalizedGetStartedMarkdown.includes(token)) {
+    fail(`get-started autosuggestion guidance is missing: ${token}`);
+  }
 }
 for (const token of [
   "`path` is the abbreviated display path",
@@ -538,6 +551,7 @@ const expectedSidebarLabels = [
   "nobsprompt",
   "Get started",
   "Opinionated prompt",
+  "Autosuggestions",
   "Detached mode",
   "Data and lifecycle",
   "Prompt recipes",
@@ -547,7 +561,6 @@ const expectedSidebarLabels = [
   "CLI reference",
   "Data protocol",
   "Configuration",
-  "Autosuggestions",
   "External command editor",
 ];
 
@@ -565,6 +578,7 @@ const sidebarLinks = [
 }));
 for (const [label, href] of [
   ["Get started", "/get-started"],
+  ["Autosuggestions", "/reference/autosuggestions"],
   ["Detached mode", "/detached-mode"],
   ["Internals", "/internals"],
 ]) {
@@ -596,6 +610,7 @@ for (const route of [
   "/detached-mode",
   "/detached-mode/data-lifecycle",
   "/detached-mode/recipes",
+  "/reference/autosuggestions",
   "/reference/data-protocol",
 ]) {
   for (const [name, content] of Object.entries(routeBearingArtifacts)) {

@@ -6,7 +6,6 @@ export default {
     "cli",
     "data-protocol",
     "configuration",
-    "autosuggestions",
     "external-editor",
   ],
 };

@@ -136,9 +136,10 @@ install the same data and redraw lifecycle without modifying the prompt.
 With
 .BR --autosuggest ,
 also install the optional autosuggestion engine. It searches in-memory history
-first and starts a bounded asynchronous directory worker only for a simple
+for ordinary commands. Safely parseable
 .B cd
-prefix after history misses.
+paths use a bounded asynchronous parent-directory snapshot as the authority,
+with history used only to rank live matches.
 .TP
 .B prompt
 Render the built-in prompt using supplied command metadata and the current
@@ -165,7 +166,9 @@ Remove cache and lock files owned by nbsp.
 .B dirs
 Emit the internal NUL-framed snapshot of immediate child directories used by
 autosuggestions. The snapshot is published only with a completion marker and
-is limited to 50 ms, 1,024 entries, and 64 KiB.
+is limited to 50 ms, 1,024 entries, and 64 KiB. Nested path suggestions invoke
+this command only for the typed parent; it never recursively traverses from the
+working directory.
 .SH PROMPT BACKEND
 The detached Zsh integration publishes a global associative array named
 .B NBSP_DATA
@@ -194,14 +197,20 @@ otherwise ~/Library/Caches/nbsp.
 .B NBSP_AUTOSUGGEST_HIGHLIGHT_STYLE
 ZLE region-highlight style for optional ghost text. Default: fg=8.
 .SH AUTOSUGGESTIONS
-The optional engine examines at most the newest 4,096 history entries. History
-always takes priority. Its directory fallback supports only an unquoted,
-metacharacter-free
-.B cd prefix
+The optional engine examines at most the newest 4,096 history entries. Ordinary
+commands use the newest exact, case-sensitive history prefix. For a static
+.B cd PATH
 or
-.BR "cd ./prefix" ,
-and offers a result only when exactly one immediate child directory matches.
-It never replaces Tab completion or recursively traverses the filesystem.
+.BR "cd -- PATH" ,
+the live children of the resolved parent are authoritative. One live match is
+offered directly; when several match, history may rank only a child present in
+that snapshot. History paths missing from that snapshot are never offered.
+.PP
+Path-aware suggestions support relative, absolute, ./, ../, ~/, nested,
+closed-quoted, and backslash-escaped paths. Variables, substitutions, globs,
+operators, unmatched quotes, named directories, multiple operands, and bare
+relative names affected by CDPATH remain ordinary history or Tab-completion
+cases. A failed or incomplete snapshot produces no directory suggestion.
 .PP
 Right Arrow accepts a suggestion only when its binding was the standard
 .B forward-char
@@ -210,7 +219,8 @@ widget. Custom bindings and foreign ZLE display text are preserved. The
 and
 .B nbsp-autosuggest-toggle
 widgets may be bound explicitly. If zsh-autosuggestions is present, nbsp skips
-or disables its own engine rather than running both.
+or disables its own engine rather than running both. An engine detected after
+initialization produces one warning at the next precmd boundary.
 .SH GIT MARKERS
 .B +
 staged,

@@ -53,28 +53,33 @@ NVM initialization:
 
 | Use | Zsh setup | Presentation |
 | --- | --- | --- |
-| Opinionated prompt | `eval "$(nbsp init zsh)"` | Fixed by `nbsp` |
-| Detached mode | `eval "$(nbsp init zsh --detached)"` | Owned by your Zsh code |
+| Opinionated prompt | `eval "$(nbsp init zsh --autosuggest)"` | Fixed by `nbsp` |
+| Detached mode | `eval "$(nbsp init zsh --detached --autosuggest)"` | Owned by your Zsh code |
 
 For a default local install:
 
 ```zsh
 export PATH="$HOME/.local/bin:$PATH"
-eval "$(nbsp init zsh)"
-```
-
-Add `--autosuggest` to either integration for optional fish-like ghost text:
-
-```zsh
 eval "$(nbsp init zsh --autosuggest)"
 ```
 
-History is searched in-process. Only when history misses on a simple `cd`
-prefix does `nbsp` asynchronously scan the current directory once, then use a
-binary prefix search over that snapshot. Right Arrow accepts a suggestion when
-its existing binding is the standard `forward-char`; custom bindings are never
-replaced. See [Autosuggestions](https://nobsprompt.pages.dev/reference/autosuggestions)
-for exact scope and compatibility.
+This enables the recommended fish-like ghost text. Recent history handles
+ordinary commands. For safely parseable `cd` paths, a bounded asynchronous
+snapshot of the typed parent directory is authoritative, so history paths
+absent from that snapshot are not offered as navigation targets.
+
+> [!WARNING]
+> Use only one autosuggestion engine. If `zsh-autosuggestions` or another
+> ghost-text plugin is already active, omit `--autosuggest` and initialize with
+> `eval "$(nbsp init zsh)"` instead. Nobsprompt detects common conflicts,
+> disables its engine, and leaves the prompt working.
+
+Each directory worker reads one level of the typed parent—even for nested paths
+such as `~/Desktop/programming/w`—and subsequent matches use binary search over
+the cached snapshot. Right Arrow accepts a suggestion when its existing binding
+is the standard `forward-char`; custom bindings are never replaced. See
+[Autosuggestions](https://nobsprompt.pages.dev/reference/autosuggestions) for
+exact scope and compatibility.
 
 Open a new terminal or run `exec zsh`.
 
@@ -98,7 +103,7 @@ redraw, and external-editor integration, but never reads or writes `PROMPT` or
 `RPROMPT`:
 
 ```zsh
-eval "$(nbsp init zsh --detached)"
+eval "$(nbsp init zsh --detached --autosuggest)"
 ```
 
 It publishes prompt facts in the global `NBSP_DATA` associative array:

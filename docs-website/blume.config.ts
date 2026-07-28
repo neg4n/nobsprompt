@@ -59,6 +59,7 @@ export default defineConfig({
           root: "/get-started",
           items: ["/get-started/opinionated-prompt"],
         },
+        "/reference/autosuggestions",
         {
           label: "Detached mode",
           icon: "code",
@@ -81,7 +82,6 @@ export default defineConfig({
             "/reference/cli",
             "/reference/data-protocol",
             "/reference/configuration",
-            "/reference/autosuggestions",
             "/reference/external-editor",
           ],
         },

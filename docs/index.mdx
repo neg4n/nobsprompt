@@ -28,10 +28,10 @@ opinionated prompt as-is, or use detached mode to build your own.
 `nbsp` is written in C, links no third-party libraries, requires no daemon or
 special font, and keeps detailed Git status in an atomic cache.
 
-Start with the [installation guide](/get-started), then choose the integration
-that fits your prompt.
+Start with the [installation guide](/get-started), which recommends bounded
+autosuggestions and explains when to disable them for plugin compatibility.
 
-<CardGroup cols={2}>
+<CardGroup cols={3}>
   <Card title="Opinionated prompt" href="/get-started/opinionated-prompt" icon="terminal">
     Install one deliberately fixed prompt with path, Git, Node, timing, jobs,
     and exact failure status.
@@ -39,6 +39,10 @@ that fits your prompt.
   <Card title="Detached mode" href="/detached-mode" icon="code">
     Keep the fast backend and asynchronous lifecycle while owning every
     presentation decision.
+  </Card>
+  <Card title="Autosuggestions" href="/reference/autosuggestions" icon="sparkles">
+    Add recent-history ghost text and live, path-aware directory suggestions
+    without replacing Tab completion.
   </Card>
 </CardGroup>
 
@@ -54,8 +58,8 @@ that fits your prompt.
 - asynchronous Git refresh with ZLE redraw correction;
 - external command editing through `Alt+E`, with multiline buffers and cursor
   restoration for vi, vim, and nvim;
-- optional in-process history ghost text with a bounded asynchronous `cd`
-  directory fallback;
+- opt-in recent-history ghost text plus live, path-aware `cd` suggestions that
+  reject stale directories without per-key filesystem scans;
 - a versioned line or NUL-delimited data interface for custom consumers.
 
 ## What it deliberately avoids

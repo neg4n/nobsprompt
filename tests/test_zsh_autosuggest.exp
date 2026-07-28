@@ -15,10 +15,12 @@ set bindir [file dirname $nbsp]
 set original_path $env(PATH)
 set tmp [file join [expr {[info exists env(TMPDIR)] ? $env(TMPDIR) : "/tmp"}] "nbsp-autosuggest-[pid]"]
 set work [file join $tmp work]
+set home [file join $tmp home]
 file mkdir [file join $work source]
-file mkdir [file join $work "space dir"]
+file mkdir [file join $work "space dir" nested]
 file mkdir [file join $work alpha]
 file mkdir [file join $work alpine]
+file mkdir [file join $home Desktop programming web]
 cd $work
 
 proc wait_prompt {} {
@@ -49,9 +51,9 @@ proc expect_re {pattern} {
     }
 }
 
-spawn env PATH=$bindir:$original_path TERM=xterm-256color NBSP_CACHE_DIR=$tmp/cache NBSP_TEST_NO_MEMO=$no_memo zsh -dfi
+spawn env HOME=$home PATH=$bindir:$original_path TERM=xterm-256color NBSP_CACHE_DIR=$tmp/cache NBSP_TEST_NO_MEMO=$no_memo zsh -dfi
 wait_prompt
-send -- {HISTSIZE=4; zmodload zsh/terminfo; _custom_right() { :; }; zle -N _custom_right; bindkey -M viins "${terminfo[kcuf1]}" _custom_right; eval "$(nbsp init zsh --autosuggest)"; (( NBSP_TEST_NO_MEMO )) && _nbsp_as_highlight_memo=0; bindkey -e; print -s -- "filler"; print -s -- "git status --short"; print -s -- "cd source --history"; print -s -- "clear"; _as_report() { print -ru2 -- "REPORT:${BUFFER}::${POSTDISPLAY}::${_nbsp_as_scan_state}::${#_nbsp_as_dirs}"; }; _as_highlights() { print -ru2 -- "HIGHLIGHTS:${#region_highlight}::${(j:|:)region_highlight}::${_nbsp_as_highlight}"; }; _as_add_foreign_highlight() { region_highlight+=( "0 1 bold" ); }; _as_clear_highlights() { region_highlight=(); }; _as_foreign() { POSTDISPLAY=FOREIGN; }; _as_foreign_clear() { POSTDISPLAY=; }; zle -N _as_report; zle -N _as_highlights; zle -N _as_add_foreign_highlight; zle -N _as_clear_highlights; zle -N _as_foreign; zle -N _as_foreign_clear; bindkey '^X^R' _as_report; bindkey '^Xh' _as_highlights; bindkey '^Xg' _as_add_foreign_highlight; bindkey '^Xk' _as_clear_highlights; bindkey '^Xf' _as_foreign; bindkey '^Xc' _as_foreign_clear; print -r -- "VI-RIGHT:$(bindkey -M viins "${terminfo[kcuf1]}")"}
+send -- {HISTSIZE=12; zmodload zsh/terminfo; _custom_right() { :; }; zle -N _custom_right; bindkey -M viins "${terminfo[kcuf1]}" _custom_right; eval "$(nbsp init zsh --autosuggest)"; (( NBSP_TEST_NO_MEMO )) && _nbsp_as_highlight_memo=0; bindkey -e; print -s -- "filler"; print -s -- "git status --short"; print -s -- "cd source --history"; print -s -- "cd ~/Desktop/programming/workspace"; print -s -- "cd ~/Desktop/programming/work"; print -s -- "cd ~/Desktop/programming/zombie"; print -s -- "clear"; _as_report() { print -ru2 -- "REPORT:${BUFFER}::${POSTDISPLAY}::${_nbsp_as_scan_state}::${#_nbsp_as_dirs}"; }; _as_highlights() { print -ru2 -- "HIGHLIGHTS:${#region_highlight}::${(j:|:)region_highlight}::${_nbsp_as_highlight}"; }; _as_add_foreign_highlight() { region_highlight+=( "0 1 bold" ); }; _as_clear_highlights() { region_highlight=(); }; _as_foreign() { POSTDISPLAY=FOREIGN; }; _as_foreign_clear() { POSTDISPLAY=; }; zle -N _as_report; zle -N _as_highlights; zle -N _as_add_foreign_highlight; zle -N _as_clear_highlights; zle -N _as_foreign; zle -N _as_foreign_clear; bindkey '^X^R' _as_report; bindkey '^Xh' _as_highlights; bindkey '^Xg' _as_add_foreign_highlight; bindkey '^Xk' _as_clear_highlights; bindkey '^Xf' _as_foreign; bindkey '^Xc' _as_foreign_clear; print -r -- "VI-RIGHT:$(bindkey -M viins "${terminfo[kcuf1]}")"}
 send -- "\r"
 expect_re {VI-RIGHT:.* _custom_right\r?\n}
 wait_prompt
@@ -79,11 +81,63 @@ after 100
 send -- "\030\022"
 expect_re {REPORT:git s::tatus --short::empty::0\r?\n}
 
-# A matching history command also wins over a matching directory.
+# A live directory wins over a complex or stale history command.
 send -- "\025cd sou"
+after 300
+send -- "\030\022"
+expect_re {REPORT:cd sou::.*::(loading::0|ready::4)\r?\n}
 after 100
 send -- "\030\022"
-expect_re {REPORT:cd sou::rce --history::empty::0\r?\n}
+expect_re {REPORT:cd sou::.*::ready::4\r?\n}
+after 50
+send -- "\030\022"
+expect_re {REPORT:cd sou::rce/::ready::4\r?\n}
+
+# A nested tilde path never resurrects a missing directory from history.
+send -- "\025cd ~/Desktop/programming/w"
+after 300
+send -- "\030\022"
+expect_re {REPORT:cd ~/Desktop/programming/w::.*::(loading::0|ready::1)\r?\n}
+after 100
+send -- "\030\022"
+expect_re {REPORT:cd ~/Desktop/programming/w::.*::ready::1\r?\n}
+after 50
+send -- "\030\022"
+expect_re {REPORT:cd ~/Desktop/programming/w::eb/::ready::1\r?\n}
+
+# A stale history result is skipped even when a live sibling makes it ambiguous.
+file mkdir [file join $home Desktop programming workspace]
+send -- "\025:"
+send -- "\r"
+wait_prompt
+send -- "cd ~/Desktop/programming/w"
+after 300
+send -- "\030\022"
+expect_re {REPORT:cd ~/Desktop/programming/w::.*::(loading::0|ready::2)\r?\n}
+after 100
+send -- "\030\022"
+expect_re {REPORT:cd ~/Desktop/programming/w::.*::ready::2\r?\n}
+after 50
+send -- "\030\022"
+expect_re {REPORT:cd ~/Desktop/programming/w::orkspace/::ready::2\r?\n}
+
+# No live match means no directory ghost, regardless of stale history.
+send -- "\025cd ~/Desktop/programming/z"
+after 100
+send -- "\030\022"
+expect_re {REPORT:cd ~/Desktop/programming/z::::ready::2\r?\n}
+
+# Quoted parent components are decoded only for the worker path.
+send -- "\025cd \"space dir\"/n"
+after 300
+send -- "\030\022"
+expect_re {REPORT:cd "space dir"/n::.*::(loading::0|ready::1)\r?\n}
+after 100
+send -- "\030\022"
+expect_re {REPORT:cd "space dir"/n::.*::ready::1\r?\n}
+after 50
+send -- "\030\022"
+expect_re {REPORT:cd "space dir"/n::ested/::ready::1\r?\n}
 
 # A history miss lazily scans once and offers the unique, shell-escaped directory.
 send -- "\025cd spa"
@@ -133,6 +187,9 @@ send -- "\030\022"
 expect_re {REPORT:git s::::ready::4\r?\n}
 
 # A full HISTSIZE ring still publishes the newest command incrementally.
+send -- "\025HISTSIZE=4; print -s -- ring-one; print -s -- ring-two; print -s -- ring-three"
+send -- "\r"
+wait_prompt
 send -- "\001\013: fresh-history-value"
 send -- "\r"
 after 200
@@ -143,6 +200,16 @@ expect_re {REPORT:: fresh::::empty::0\r?\n}
 after 50
 send -- "\030\022"
 expect_re {REPORT:: fresh::.*history-value::empty::0\r?\n}
+
+# A plugin loaded later disables nbsp before the next prompt and warns once.
+send -- "\025_zsh_autosuggest_start() { :; }; :"
+send -- "\r"
+expect_re {nbsp: --autosuggest disabled because another autosuggestion plugin is active; use only one engine or remove --autosuggest\r?\n}
+wait_prompt
+send -- {print -r -- "CONFLICT:${_nbsp_as_disabled}:${_nbsp_as_conflict_warned}"}
+send -- "\r"
+expect_re {CONFLICT:1:1\r?\n}
+wait_prompt
 
 send -- "\003"
 after 100

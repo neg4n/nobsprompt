@@ -86,25 +86,29 @@ description: Clone, review, build, and install nobsprompt on macOS, configure it
     <Tab title="Opinionated prompt">
 
     ```zsh
-    eval "$(nbsp init zsh)"
+    eval "$(nbsp init zsh --autosuggest)"
     ```
 
     </Tab>
     <Tab title="Detached mode">
 
     ```zsh
-    eval "$(nbsp init zsh --detached)"
+    eval "$(nbsp init zsh --detached --autosuggest)"
     ```
 
     </Tab>
   </Tabs>
 
-  Add `--autosuggest` to either command to opt into history ghost text and the
-  bounded one-level `cd` fallback:
+  These recommended commands enable recent-history ghost text and bounded,
+  path-aware `cd` suggestions.
 
-  ```zsh
-  eval "$(nbsp init zsh --autosuggest)"
-  ```
+  :::warning[Use one autosuggestion engine]
+  Do not combine nobsprompt autosuggestions with `zsh-autosuggestions` or
+  another plugin that owns ghost text. If one is already installed, omit
+  `--autosuggest` and use `eval "$(nbsp init zsh)"` or
+  `eval "$(nbsp init zsh --detached)"`. Nobsprompt detects common conflicts,
+  disables only its autosuggestion engine, and leaves the prompt working.
+  :::
 
   Put initialization after NVM setup so the active `node_version` is detected.
   The first mode initialized in a shell wins.
@@ -135,11 +139,14 @@ Use `man nbsp` for the terminal reference.
 
 ## Next step
 
-<CardGroup cols={2}>
+<CardGroup cols={3}>
   <Card title="Opinionated prompt" href="/get-started/opinionated-prompt" icon="terminal">
     Learn exactly what the built-in prompt shows and what remains fixed.
   </Card>
   <Card title="Detached mode" href="/detached-mode" icon="code">
     Start with a minimal user-owned prompt backed by `NBSP_DATA`.
+  </Card>
+  <Card title="Autosuggestions" href="/reference/autosuggestions" icon="sparkles">
+    Learn live-path ranking, limits, acceptance keys, and plugin compatibility.
   </Card>
 </CardGroup>

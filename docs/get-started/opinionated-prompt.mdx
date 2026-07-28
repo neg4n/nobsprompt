@@ -6,8 +6,11 @@ description: Understand the fixed nobsprompt layout, when each segment appears, 
 Initialize the opinionated prompt in `~/.zshrc`:
 
 ```zsh
-eval "$(nbsp init zsh)"
+eval "$(nbsp init zsh --autosuggest)"
 ```
+
+This recommended setup includes bounded autosuggestions. If another ghost-text
+plugin is already active, omit `--autosuggest`; the prompt itself is unchanged.
 
 The output is one line:
 
