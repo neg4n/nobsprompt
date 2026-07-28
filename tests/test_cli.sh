@@ -6,18 +6,46 @@ case $1 in
   *) nbsp=$(cd "$(dirname "$1")" && pwd)/$(basename "$1") ;;
 esac
 zsh_source=$2
+zsh_autosuggest_source=$3
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/nbsp-cli.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 "$nbsp" --version | grep -q '^nbsp 0\.1\.0$'
 "$nbsp" --help | grep -q 'nbsp init zsh'
+"$nbsp" --help | grep -q 'nbsp init zsh \[--detached\] \[--autosuggest\]'
 "$nbsp" --help | grep -q 'nbsp data'
 "$nbsp" --help | grep -q 'nbsp refresh \[--cwd PATH\] \[--notify\] \[--force\]'
+"$nbsp" --help | grep -q 'nbsp dirs \[--cwd PATH\] \[--format nul\]'
 "$nbsp" init zsh > "$tmp/nbsp_zsh.zsh"
 test "$(sed -n '1p' "$tmp/nbsp_zsh.zsh")" = 'typeset -g _NBSP_INIT_MODE=prompt'
 sed '1d' "$tmp/nbsp_zsh.zsh" > "$tmp/nbsp_zsh_body.zsh"
 cmp "$zsh_source" "$tmp/nbsp_zsh_body.zsh"
 "$nbsp" init zsh --detached | grep -q '^typeset -g _NBSP_INIT_MODE=detached$'
+"$nbsp" init zsh --autosuggest > "$tmp/nbsp_zsh_autosuggest.zsh"
+grep -q '^    _nbsp_as_pre_redraw() {' "$tmp/nbsp_zsh_autosuggest.zsh"
+zsh_init_bytes=$(wc -c < "$tmp/nbsp_zsh.zsh" | tr -d ' ')
+tail -c "+$((zsh_init_bytes + 1))" "$tmp/nbsp_zsh_autosuggest.zsh" > "$tmp/nbsp_zsh_autosuggest_body.zsh"
+cmp "$zsh_autosuggest_source" "$tmp/nbsp_zsh_autosuggest_body.zsh"
+"$nbsp" init zsh --autosuggest --detached > "$tmp/nbsp_zsh_detached_autosuggest.zsh"
+grep -q '^typeset -g _NBSP_INIT_MODE=detached$' "$tmp/nbsp_zsh_detached_autosuggest.zsh"
+grep -q '^    _nbsp_as_pre_redraw() {' "$tmp/nbsp_zsh_detached_autosuggest.zsh"
+"$nbsp" init zsh --detached --autosuggest >/dev/null
+conflict_result=$(zsh -dfc '
+  _zsh_autosuggest_start() { :; }
+  eval "$("$1" init zsh --autosuggest 2>/dev/null)"
+  if (( $+functions[_nbsp_as_pre_redraw] )); then
+    print installed
+  else
+    print skipped
+  fi
+' _ "$nbsp")
+test "$conflict_result" = skipped
+if "$nbsp" init zsh --autosuggest --autosuggest >/dev/null 2>&1; then
+  echo 'duplicate autosuggest flag unexpectedly succeeded' >&2
+  exit 1
+else
+  test $? -eq 2
+fi
 if "$nbsp" prompt --status 999 >/dev/null 2>&1; then
   echo 'invalid status unexpectedly succeeded' >&2
   exit 1
@@ -32,6 +60,32 @@ else
 fi
 if "$nbsp" init zsh --unknown >/dev/null 2>&1; then
   echo 'invalid init mode unexpectedly succeeded' >&2
+  exit 1
+else
+  test $? -eq 2
+fi
+
+dirs_root="$tmp/dirs"
+mkdir -p "$dirs_root/alpha" "$dirs_root/space dir"
+ln -s alpha "$dirs_root/linked"
+printf 'not a directory\n' > "$dirs_root/regular"
+dirs_check=$(zsh -dfc '
+  typeset key value
+  typeset -a dirs
+  integer schema=0 complete=0
+  while IFS= read -r -d "" key && IFS= read -r -d "" value; do
+    case $key in
+      schema_version) schema=$value ;;
+      dir) dirs+=( "$value" ) ;;
+      complete) complete=$value ;;
+      *) exit 3 ;;
+    esac
+  done < <("$1" dirs --cwd "$2" --format nul)
+  print -r -- "$schema $complete ${(j:,:)dirs}"
+' _ "$nbsp" "$dirs_root")
+test "$dirs_check" = '1 1 alpha,linked,space dir'
+if "$nbsp" dirs --cwd "$dirs_root" --format json >/dev/null 2>&1; then
+  echo 'invalid dirs format unexpectedly succeeded' >&2
   exit 1
 else
   test $? -eq 2

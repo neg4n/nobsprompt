@@ -7,6 +7,7 @@
 
 #include "nbsp_cache.h"
 #include "nbsp_data.h"
+#include "nbsp_dirs.h"
 #include "nbsp_git.h"
 #include "nbsp_prompt.h"
 #include "nbsp_util.h"
@@ -232,6 +233,71 @@ static void test_data_output(void) {
     }
 }
 
+static bool nul_output_has_pair(const unsigned char *output,
+    size_t length,
+    const char *wanted_key,
+    const char *wanted_value) {
+    size_t offset = 0U;
+    while (offset < length) {
+        const char *key = (const char *) output + offset;
+        size_t key_len = strnlen(key, length - offset);
+        if (key_len == length - offset) return false;
+        offset += key_len + 1U;
+        if (offset >= length) return false;
+        const char *value = (const char *) output + offset;
+        size_t value_len = strnlen(value, length - offset);
+        if (value_len == length - offset) return false;
+        offset += value_len + 1U;
+        if (strcmp(key, wanted_key) == 0 && strcmp(value, wanted_value) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void test_dirs_output(void) {
+    char root[128];
+    char alpha[160];
+    char spaced[160];
+    char link[160];
+    char regular[160];
+    (void) snprintf(root, sizeof root, "/tmp/nbsp-dirs-unit-%ld", (long) getpid());
+    (void) snprintf(alpha, sizeof alpha, "%s/alpha", root);
+    (void) snprintf(spaced, sizeof spaced, "%s/space dir", root);
+    (void) snprintf(link, sizeof link, "%s/linked", root);
+    (void) snprintf(regular, sizeof regular, "%s/regular", root);
+    CHECK(mkdir(root, 0700) == 0);
+    CHECK(mkdir(alpha, 0700) == 0);
+    CHECK(mkdir(spaced, 0700) == 0);
+    CHECK(symlink("alpha", link) == 0);
+    FILE *file = fopen(regular, "w");
+    CHECK(file != NULL);
+    if (file) CHECK(fclose(file) == 0);
+
+    FILE *stream = tmpfile();
+    CHECK(stream != NULL);
+    if (stream) {
+        CHECK(nbsp_dirs_write(stream, root));
+        CHECK(fflush(stream) == 0);
+        CHECK(fseek(stream, 0L, SEEK_SET) == 0);
+        unsigned char output[4096];
+        size_t length = fread(output, 1U, sizeof output, stream);
+        CHECK(nul_output_has_pair(output, length, "schema_version", "1"));
+        CHECK(nul_output_has_pair(output, length, "dir", "alpha"));
+        CHECK(nul_output_has_pair(output, length, "dir", "space dir"));
+        CHECK(nul_output_has_pair(output, length, "dir", "linked"));
+        CHECK(!nul_output_has_pair(output, length, "dir", "regular"));
+        CHECK(nul_output_has_pair(output, length, "complete", "1"));
+        CHECK(fclose(stream) == 0);
+    }
+
+    CHECK(unlink(regular) == 0);
+    CHECK(unlink(link) == 0);
+    CHECK(rmdir(spaced) == 0);
+    CHECK(rmdir(alpha) == 0);
+    CHECK(rmdir(root) == 0);
+}
+
 int main(void) {
     test_paths();
     test_escape_and_nvm();
@@ -239,6 +305,7 @@ int main(void) {
     test_cache();
     test_prompt();
     test_data_output();
+    test_dirs_output();
     test_buffer_growth();
     if (failures) {
         fprintf(stderr, "%d unit check(s) failed\n", failures);

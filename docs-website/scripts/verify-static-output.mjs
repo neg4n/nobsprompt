@@ -103,6 +103,7 @@ for (const path of [
   "index.mdx",
   "get-started.md",
   "detached-mode/data-lifecycle.md",
+  "reference/autosuggestions.md",
   "reference/data-protocol.md",
   "logo.svg",
   "icon.svg",
@@ -499,7 +500,7 @@ for (const token of [
 }
 if (
   !homepageMarkdown.includes("## Features") ||
-  !homepageMarkdown.includes("53 KiB") ||
+  !homepageMarkdown.includes("54 KiB") ||
   homepageMarkdown.includes("## What the backend provides")
 ) {
   fail("the homepage does not present the revised Features section");
@@ -546,6 +547,7 @@ const expectedSidebarLabels = [
   "CLI reference",
   "Data protocol",
   "Configuration",
+  "Autosuggestions",
   "External command editor",
 ];
 

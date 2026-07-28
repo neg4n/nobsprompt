@@ -18,7 +18,7 @@ putting Git or Node on the foreground rendering path.
 
 `nbsp` is written in C, links no third-party libraries, requires no daemon or
 special font, and uses an atomic cache for detailed Git status. The current
-optimized arm64 release executable is about 53 KiB. Use the included
+optimized arm64 release executable is about 54 KiB. Use the included
 opinionated prompt as-is, or keep the backend and build the prompt yourself.
 
 [Read the documentation](https://nobsprompt.pages.dev) or continue below for
@@ -62,6 +62,19 @@ For a default local install:
 export PATH="$HOME/.local/bin:$PATH"
 eval "$(nbsp init zsh)"
 ```
+
+Add `--autosuggest` to either integration for optional fish-like ghost text:
+
+```zsh
+eval "$(nbsp init zsh --autosuggest)"
+```
+
+History is searched in-process. Only when history misses on a simple `cd`
+prefix does `nbsp` asynchronously scan the current directory once, then use a
+binary prefix search over that snapshot. Right Arrow accepts a suggestion when
+its existing binding is the standard `forward-char`; custom bindings are never
+replaced. See [Autosuggestions](https://nobsprompt.pages.dev/reference/autosuggestions)
+for exact scope and compatibility.
 
 Open a new terminal or run `exec zsh`.
 
@@ -143,8 +156,9 @@ for the complete behavior.
 `nbsp cache clear` removes cache and lock files owned by `nbsp`.
 
 `NBSP_GIT_TIMEOUT_MS` controls the background Git timeout and defaults to
-1500 ms. These are operational controls shared by both modes; there are no
-presentation environment variables.
+1500 ms. These operational controls are shared by both modes. The built-in
+prompt has no presentation environment variables; optional ghost text exposes
+only `NBSP_AUTOSUGGEST_HIGHLIGHT_STYLE`.
 
 `nbsp refresh --force` bypasses only the 250 ms duplicate-refresh debounce.
 Locking, the timeout, and atomic cache publication still apply.
@@ -157,10 +171,11 @@ target is a warm p95 below 5 ms on the development Mac:
 ```sh
 zsh bench/benchmark.zsh ./build/nbsp
 zsh bench/benchmark.zsh ./build/nbsp data
+zsh bench/benchmark.zsh ./build/nbsp dirs
 ```
 
 [Performance and memory](https://nobsprompt.pages.dev/internals/performance)
-contains the measured 53 KiB arm64 release size, latency and memory results,
+contains the measured 54 KiB arm64 release size, latency and memory results,
 the hot-path audit, sanitizer and fuzzing coverage, and the evaluation of more
 complex alternatives.
 

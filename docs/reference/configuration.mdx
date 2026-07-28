@@ -74,6 +74,17 @@ The opinionated prompt intentionally does not accept settings for:
 
 Use [detached mode](/detached-mode) and ordinary Zsh code for those decisions.
 
+The optional autosuggestion ghost text has one deliberately narrow style
+override. Set it before initialization:
+
+```zsh
+typeset -g NBSP_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
+eval "$(nbsp init zsh --autosuggest)"
+```
+
+The value uses ZLE's `region_highlight` style syntax. Suggestion strategy,
+limits, matching, and acceptance behavior are fixed.
+
 ## Repository settings
 
 `nbsp` does not modify repository or global Git configuration. Users with very

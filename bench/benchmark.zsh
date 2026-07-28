@@ -8,8 +8,8 @@ iterations=${NBSP_BENCH_ITERATIONS:-1000}
 tmp=$(mktemp "${TMPDIR:-/tmp}/nbsp-bench.XXXXXX")
 trap 'rm -f "$tmp"' EXIT HUP INT TERM
 
-if [[ $command != prompt && $command != data ]]; then
-  print -ru2 -- "usage: $0 [nbsp-binary] [prompt|data]"
+if [[ $command != prompt && $command != data && $command != dirs ]]; then
+  print -ru2 -- "usage: $0 [nbsp-binary] [prompt|data|dirs]"
   exit 2
 fi
 

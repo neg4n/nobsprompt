@@ -45,7 +45,7 @@ that fits your prompt.
 ## Features
 
 - an abbreviated working directory;
-- a single executable measuring about 53 KiB in the current optimized arm64
+- a single executable measuring about 54 KiB in the current optimized arm64
   release build, documented in [Performance and memory](/internals/performance);
 - Git branch and staged, modified, untracked, conflicted, ahead, behind, and
   stash counts;
@@ -54,6 +54,8 @@ that fits your prompt.
 - asynchronous Git refresh with ZLE redraw correction;
 - external command editing through `Alt+E`, with multiline buffers and cursor
   restoration for vi, vim, and nvim;
+- optional in-process history ghost text with a bounded asynchronous `cd`
+  directory fallback;
 - a versioned line or NUL-delimited data interface for custom consumers.
 
 ## What it deliberately avoids

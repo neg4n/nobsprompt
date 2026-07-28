@@ -1,15 +1,16 @@
 ---
 title: CLI reference
-description: Reference every nbsp command and option, including prompt metadata, data formats, refresh controls, and process exit statuses.
+description: Reference every nbsp command and option, including prompt metadata, autosuggestions, data formats, refresh controls, and process exit statuses.
 ---
 
 ## Synopsis
 
 ```text
-nbsp init zsh [--detached]
+nbsp init zsh [--detached] [--autosuggest]
 nbsp prompt [--status N] [--duration-ms N] [--jobs N]
 nbsp data [--status N] [--duration-ms N] [--jobs N] [--format lines|nul]
 nbsp refresh [--cwd PATH] [--notify] [--force]
+nbsp dirs [--cwd PATH] [--format nul]
 nbsp cache clear
 nbsp --help
 nbsp --version
@@ -33,6 +34,11 @@ eval "$(nbsp init zsh --detached)"
 `--detached` installs the same data and redraw lifecycle without modifying
 `PROMPT` or `RPROMPT`. It publishes `NBSP_DATA`,
 `nbsp_data_update_functions`, and `nbsp_prompt_escape`.
+
+`--autosuggest` is independent of prompt mode. It adds optional history ghost
+text and the bounded one-level directory fallback described in
+[Autosuggestions](/reference/autosuggestions). Options may appear in either
+order.
 
 ## `prompt`
 
@@ -93,12 +99,28 @@ Remove cache and lock files owned by `nbsp`:
 nbsp cache clear
 ```
 
+## `dirs`
+
+Emit a bounded snapshot of immediate child directories for the Zsh
+autosuggestion worker:
+
+```sh
+nbsp dirs --cwd "$PWD" --format nul
+```
+
+The protocol consists of alternating NUL-delimited keys and values. A consumer
+must ignore the entire snapshot unless it receives `schema_version=1` followed
+by `complete=1`. The command follows directory symlinks, sorts names bytewise,
+and rejects a scan that exceeds 1,024 entries, 64 KiB, or 50 ms. It is an
+internal, versioned boundary; scripts needing a general file-listing interface
+should use standard filesystem tools.
+
 ## Process exit status
 
 | Status | Meaning |
 | --- | --- |
 | `0` | Success |
-| `1` | Operational, serialization, refresh, or cache failure |
+| `1` | Operational, serialization, directory, refresh, or cache failure |
 | `2` | Invalid command-line usage |
 
 Optional prompt context failures do not prevent a prompt from being rendered.

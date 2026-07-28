@@ -1,10 +1,13 @@
-.TH NBSP 1 "July 24, 2026" "nbsp 0.1.0" "User Commands"
+.TH NBSP 1 "July 28, 2026" "nbsp 0.1.0" "User Commands"
 .SH NAME
 nbsp \- a lightweight prompt backend and opinionated Zsh prompt
 .SH SYNOPSIS
 .B nbsp init zsh
 [
 .B --detached
+]
+[
+.B --autosuggest
 ]
 .br
 .B nbsp prompt
@@ -51,6 +54,15 @@ nbsp \- a lightweight prompt backend and opinionated Zsh prompt
 .B --force
 ]
 .br
+.B nbsp dirs
+[
+.B --cwd
+.I PATH
+]
+[
+.B --format nul
+]
+.br
 .B nbsp cache clear
 .SH DESCRIPTION
 .B nbsp
@@ -89,6 +101,12 @@ To use the backend for a custom prompt instead, use:
 .EX
 eval "$(nbsp init zsh --detached)"
 .EE
+.PP
+Add bounded history and one-level directory ghost text to either mode with:
+.PP
+.EX
+eval "$(nbsp init zsh --autosuggest)"
+.EE
 .SH EXTERNAL COMMAND EDITING
 If it is not already bound,
 .B Alt+E
@@ -115,6 +133,12 @@ Print Zsh integration code. The default installs the fixed, opinionated
 prompt. With
 .BR --detached ,
 install the same data and redraw lifecycle without modifying the prompt.
+With
+.BR --autosuggest ,
+also install the optional autosuggestion engine. It searches in-memory history
+first and starts a bounded asynchronous directory worker only for a simple
+.B cd
+prefix after history misses.
 .TP
 .B prompt
 Render the built-in prompt using supplied command metadata and the current
@@ -137,6 +161,11 @@ and atomic cache publication are unchanged.
 .TP
 .B cache clear
 Remove cache and lock files owned by nbsp.
+.TP
+.B dirs
+Emit the internal NUL-framed snapshot of immediate child directories used by
+autosuggestions. The snapshot is published only with a completion marker and
+is limited to 50 ms, 1,024 entries, and 64 KiB.
 .SH PROMPT BACKEND
 The detached Zsh integration publishes a global associative array named
 .B NBSP_DATA
@@ -149,7 +178,7 @@ for safely embedding dynamic text in Zsh prompts.
 The complete schema, lifecycle, safe parsing rules, and custom prompt examples
 are
 documented in
-.IR custom-prompts/index.mdx ,
+.IR detached-mode/index.mdx ,
 installed under the nobsprompt documentation directory.
 .SH CONFIGURATION
 Presentation is not configurable in built-in mode. Use detached mode to choose
@@ -161,6 +190,27 @@ Background Git timeout in milliseconds. Default: 1500.
 .B NBSP_CACHE_DIR
 Override the cache root. The default is the XDG cache directory when set,
 otherwise ~/Library/Caches/nbsp.
+.TP
+.B NBSP_AUTOSUGGEST_HIGHLIGHT_STYLE
+ZLE region-highlight style for optional ghost text. Default: fg=8.
+.SH AUTOSUGGESTIONS
+The optional engine examines at most the newest 4,096 history entries. History
+always takes priority. Its directory fallback supports only an unquoted,
+metacharacter-free
+.B cd prefix
+or
+.BR "cd ./prefix" ,
+and offers a result only when exactly one immediate child directory matches.
+It never replaces Tab completion or recursively traverses the filesystem.
+.PP
+Right Arrow accepts a suggestion only when its binding was the standard
+.B forward-char
+widget. Custom bindings and foreign ZLE display text are preserved. The
+.B nbsp-autosuggest-accept
+and
+.B nbsp-autosuggest-toggle
+widgets may be bound explicitly. If zsh-autosuggestions is present, nbsp skips
+or disables its own engine rather than running both.
 .SH GIT MARKERS
 .B +
 staged,

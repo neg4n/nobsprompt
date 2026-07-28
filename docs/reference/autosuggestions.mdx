@@ -1,0 +1,90 @@
+---
+title: Autosuggestions
+description: Enable bounded fish-like history ghost text and a safe one-level directory fallback without replacing Zsh completion.
+---
+
+Autosuggestions are optional and work with either prompt mode:
+
+```zsh
+eval "$(nbsp init zsh --autosuggest)"
+```
+
+This is intentionally smaller than fish completion. It predicts one complete
+line; it does not generate option descriptions, parse command grammars, or
+replace Tab completion.
+
+## Selection order
+
+For a nonempty, single-line buffer with the cursor at the end:
+
+1. search the newest 4,096 in-memory Zsh history entries for an exact,
+   case-sensitive prefix;
+2. reuse that candidate while subsequent input still matches it;
+3. only after a history miss, consider a simple `cd prefix` or `cd ./prefix`;
+4. show a directory only when exactly one immediate child matches.
+
+`cd al` therefore stays empty when both `alpha/` and `alpine/` exist. Ordinary
+Tab completion remains available for the ambiguous case and for every syntax
+outside this narrow grammar.
+
+Suggestions are suppressed for multiline input or history results, leading
+whitespace, selections, a cursor before the end of the buffer, prefixes longer
+than 256 characters, complete results longer than 4,096 characters, and queued
+input. History always wins over a directory with the same prefix.
+
+## Directory cost and safety
+
+The filesystem is never traversed on each keypress. The first eligible history
+miss starts one asynchronous `nbsp dirs` process for the current prompt and
+working directory. Its result is published only after a complete NUL-framed
+snapshot arrives. The worker has hard limits of:
+
+- 50 ms;
+- 1,024 immediate child directories;
+- 64 KiB of records.
+
+It reads one level only, includes directory symlinks, and performs no recursive
+walk. A timeout, malformed frame, changed working directory, closed descriptor,
+or exceeded limit discards the partial snapshot and leaves the command line
+untouched. A valid snapshot is sorted once; subsequent prefix checks use binary
+search without filesystem syscalls.
+
+Only an unquoted, metacharacter-free prefix is accepted as input to the
+directory fallback. The chosen directory name is shell-quoted before it is
+displayed or inserted. Names are data, never evaluated as Zsh source.
+
+## Accepting and controlling suggestions
+
+Right Arrow accepts ghost text only when that sequence was still bound to
+Zsh's built-in `forward-char` during initialization. Existing user or plugin
+bindings in `emacs` and `viins` are preserved.
+
+The widgets are public for explicit bindings:
+
+```zsh
+bindkey '^F' nbsp-autosuggest-accept
+bindkey '^X^A' nbsp-autosuggest-toggle
+```
+
+Acceptance is ownership-checked: it inserts text only when the current
+`POSTDISPLAY` still equals the suffix produced by nobsprompt. Otherwise it
+falls back to the built-in `forward-char` widget. Highlight ownership is
+similarly narrow, so unrelated ZLE integrations keep their display state.
+
+Set the ghost-text style before initialization if the default `fg=8` does not
+fit the terminal palette:
+
+```zsh
+typeset -g NBSP_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=242'
+eval "$(nbsp init zsh --autosuggest)"
+```
+
+## Plugin compatibility
+
+Do not run two autosuggestion engines. If `zsh-autosuggestions` is already
+loaded, nobsprompt reports the conflict and skips its own engine. If that
+plugin appears later, nobsprompt disables its engine on the next redraw. It
+does not wrap every widget or overwrite custom Right Arrow bindings.
+
+Without `--autosuggest`, the emitted Zsh integration and prompt behavior are
+unchanged.

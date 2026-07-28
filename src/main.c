@@ -2,13 +2,16 @@
 #include <getopt.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include "nbsp_cache.h"
 #include "nbsp_data.h"
+#include "nbsp_dirs.h"
 #include "nbsp_prompt.h"
 #include "nbsp_util.h"
 #include "nbsp_zsh.h"
@@ -24,11 +27,12 @@
 static void print_usage(FILE *out) {
     fputs(
         "Usage:\n"
-        "  nbsp init zsh [--detached]\n"
+        "  nbsp init zsh [--detached] [--autosuggest]\n"
         "  nbsp prompt [--status N] [--duration-ms N] [--jobs N]\n"
         "  nbsp data [--status N] [--duration-ms N] [--jobs N]"
             " [--format lines|nul]\n"
         "  nbsp refresh [--cwd PATH] [--notify] [--force]\n"
+        "  nbsp dirs [--cwd PATH] [--format nul]\n"
         "  nbsp cache clear\n"
         "  nbsp --help\n"
         "  nbsp --version\n",
@@ -193,6 +197,54 @@ static int command_refresh(int argc, char **argv) {
     return nbsp_refresh(cwd_arg, nbsp_git_timeout_from_env(), notify, force);
 }
 
+static int command_dirs(int argc, char **argv) {
+    const char *cwd_arg = NULL;
+    enum { OPT_CWD = 1, OPT_FORMAT };
+    static const struct option options[] = {
+        {"cwd", required_argument, NULL, OPT_CWD},
+        {"format", required_argument, NULL, OPT_FORMAT},
+        {0, 0, 0, 0}
+    };
+    optind = 1;
+    int option = 0;
+    while ((option = getopt_long(argc, argv, "", options, NULL)) != -1) {
+        if (option == OPT_CWD) {
+            cwd_arg = optarg;
+        } else if (option == OPT_FORMAT) {
+            if (strcmp(optarg, "nul") != 0) return 2;
+        } else {
+            return 2;
+        }
+    }
+    if (optind != argc) return 2;
+
+    char cwd[PATH_MAX];
+    if (!cwd_arg) {
+        if (!getcwd(cwd, sizeof cwd)) return 1;
+        cwd_arg = cwd;
+    }
+
+    struct sigaction alarm_action;
+    memset(&alarm_action, 0, sizeof alarm_action);
+    alarm_action.sa_handler = SIG_DFL;
+    (void) sigemptyset(&alarm_action.sa_mask);
+    if (sigaction(SIGALRM, &alarm_action, NULL) != 0) return 1;
+    sigset_t alarm_set;
+    if (sigemptyset(&alarm_set) != 0 || sigaddset(&alarm_set, SIGALRM) != 0 ||
+        sigprocmask(SIG_UNBLOCK, &alarm_set, NULL) != 0) {
+        return 1;
+    }
+
+    struct itimerval timer = {0};
+    timer.it_value.tv_usec = (suseconds_t) NBSP_DIR_TIMEOUT_MS * 1000;
+    if (setitimer(ITIMER_REAL, &timer, NULL) != 0) return 1;
+    (void) setvbuf(stdout, NULL, _IONBF, 0);
+    bool ok = nbsp_dirs_write(stdout, cwd_arg);
+    memset(&timer, 0, sizeof timer);
+    (void) setitimer(ITIMER_REAL, &timer, NULL);
+    return ok ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         print_usage(stderr);
@@ -207,16 +259,28 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (strcmp(argv[1], "init") == 0) {
-        bool detached = argc == 4 && strcmp(argv[3], "--detached") == 0;
-        if ((argc != 3 && !detached) || strcmp(argv[2], "zsh") != 0) {
+        bool detached = false;
+        bool autosuggest = false;
+        if (argc < 3 || strcmp(argv[2], "zsh") != 0) {
             print_usage(stderr);
             return 2;
+        }
+        for (int i = 3; i < argc; ++i) {
+            if (strcmp(argv[i], "--detached") == 0 && !detached) {
+                detached = true;
+            } else if (strcmp(argv[i], "--autosuggest") == 0 && !autosuggest) {
+                autosuggest = true;
+            } else {
+                print_usage(stderr);
+                return 2;
+            }
         }
         fputs(detached
             ? "typeset -g _NBSP_INIT_MODE=detached\n"
             : "typeset -g _NBSP_INIT_MODE=prompt\n",
             stdout);
         nbsp_print_zsh_init(stdout);
+        if (autosuggest) nbsp_print_zsh_autosuggest(stdout);
         return 0;
     }
     if (strcmp(argv[1], "prompt") == 0) {
@@ -227,6 +291,9 @@ int main(int argc, char **argv) {
     }
     if (strcmp(argv[1], "refresh") == 0) {
         return command_refresh(argc - 1, argv + 1);
+    }
+    if (strcmp(argv[1], "dirs") == 0) {
+        return command_dirs(argc - 1, argv + 1);
     }
     if (strcmp(argv[1], "cache") == 0) {
         if (argc == 3 && strcmp(argv[2], "clear") == 0) {

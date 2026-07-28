@@ -81,6 +81,7 @@ export default defineConfig({
             "/reference/cli",
             "/reference/data-protocol",
             "/reference/configuration",
+            "/reference/autosuggestions",
             "/reference/external-editor",
           ],
         },

@@ -99,6 +99,13 @@ description: Clone, review, build, and install nobsprompt on macOS, configure it
     </Tab>
   </Tabs>
 
+  Add `--autosuggest` to either command to opt into history ghost text and the
+  bounded one-level `cd` fallback:
+
+  ```zsh
+  eval "$(nbsp init zsh --autosuggest)"
+  ```
+
   Put initialization after NVM setup so the active `node_version` is detected.
   The first mode initialized in a shell wins.
 

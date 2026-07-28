@@ -1,0 +1,151 @@
+#!/usr/bin/expect -f
+
+set timeout 10
+log_user [expr {[info exists env(NBSP_EXPECT_LOG)] ? 1 : 0}]
+match_max -d 1000000
+
+if {$argc < 1 || $argc > 2} {
+    puts stderr "usage: test_zsh_autosuggest.exp /absolute/path/to/nbsp \[--no-memo\]"
+    exit 2
+}
+
+set nbsp [file normalize [lindex $argv 0]]
+set no_memo [expr {$argc == 2 && [lindex $argv 1] eq "--no-memo"}]
+set bindir [file dirname $nbsp]
+set original_path $env(PATH)
+set tmp [file join [expr {[info exists env(TMPDIR)] ? $env(TMPDIR) : "/tmp"}] "nbsp-autosuggest-[pid]"]
+set work [file join $tmp work]
+file mkdir [file join $work source]
+file mkdir [file join $work "space dir"]
+file mkdir [file join $work alpha]
+file mkdir [file join $work alpine]
+cd $work
+
+proc wait_prompt {} {
+    expect {
+        -re {[%#] } {}
+        timeout {
+            puts stderr "timed out waiting for a Zsh prompt"
+            exit 1
+        }
+        eof {
+            puts stderr "Zsh exited while waiting for a prompt"
+            exit 1
+        }
+    }
+}
+
+proc expect_re {pattern} {
+    expect {
+        -re $pattern { return $expect_out(buffer) }
+        timeout {
+            puts stderr "timed out waiting for pattern: $pattern"
+            exit 1
+        }
+        eof {
+            puts stderr "Zsh exited while waiting for pattern: $pattern"
+            exit 1
+        }
+    }
+}
+
+spawn env PATH=$bindir:$original_path TERM=xterm-256color NBSP_CACHE_DIR=$tmp/cache NBSP_TEST_NO_MEMO=$no_memo zsh -dfi
+wait_prompt
+send -- {HISTSIZE=4; zmodload zsh/terminfo; _custom_right() { :; }; zle -N _custom_right; bindkey -M viins "${terminfo[kcuf1]}" _custom_right; eval "$(nbsp init zsh --autosuggest)"; (( NBSP_TEST_NO_MEMO )) && _nbsp_as_highlight_memo=0; bindkey -e; print -s -- "filler"; print -s -- "git status --short"; print -s -- "cd source --history"; print -s -- "clear"; _as_report() { print -ru2 -- "REPORT:${BUFFER}::${POSTDISPLAY}::${_nbsp_as_scan_state}::${#_nbsp_as_dirs}"; }; _as_highlights() { print -ru2 -- "HIGHLIGHTS:${#region_highlight}::${(j:|:)region_highlight}::${_nbsp_as_highlight}"; }; _as_add_foreign_highlight() { region_highlight+=( "0 1 bold" ); }; _as_clear_highlights() { region_highlight=(); }; _as_foreign() { POSTDISPLAY=FOREIGN; }; _as_foreign_clear() { POSTDISPLAY=; }; zle -N _as_report; zle -N _as_highlights; zle -N _as_add_foreign_highlight; zle -N _as_clear_highlights; zle -N _as_foreign; zle -N _as_foreign_clear; bindkey '^X^R' _as_report; bindkey '^Xh' _as_highlights; bindkey '^Xg' _as_add_foreign_highlight; bindkey '^Xk' _as_clear_highlights; bindkey '^Xf' _as_foreign; bindkey '^Xc' _as_foreign_clear; print -r -- "VI-RIGHT:$(bindkey -M viins "${terminfo[kcuf1]}")"}
+send -- "\r"
+expect_re {VI-RIGHT:.* _custom_right\r?\n}
+wait_prompt
+
+# ZLE may shorten POSTDISPLAY as matching characters are typed; ownership follows it.
+send -- "c"
+after 100
+send -- "l"
+after 100
+send -- "\030\022"
+expect_re {REPORT:cl::ear::empty::0\r?\n}
+send -- "\033\[C"
+after 50
+send -- "\030\022"
+set incremental_accept [expect_re {REPORT:clear::::empty::0\r?\n}]
+if {[string first "\a" $incremental_accept] >= 0} {
+    puts stderr "incremental history acceptance rang the terminal bell"
+    exit 1
+}
+send -- "\025"
+
+# Most-recent exact history prefix wins without starting a directory scan.
+send -- "git s"
+after 100
+send -- "\030\022"
+expect_re {REPORT:git s::tatus --short::empty::0\r?\n}
+
+# A matching history command also wins over a matching directory.
+send -- "\025cd sou"
+after 100
+send -- "\030\022"
+expect_re {REPORT:cd sou::rce --history::empty::0\r?\n}
+
+# A history miss lazily scans once and offers the unique, shell-escaped directory.
+send -- "\025cd spa"
+after 300
+send -- "\030\022"
+expect_re {REPORT:cd spa::.*::ready::4\r?\n}
+after 50
+send -- "\030\022"
+expect_re {REPORT:cd spa::ce.*dir/::ready::4\r?\n}
+
+# Right Arrow accepts the owned suffix and leaves no ghost text behind.
+send -- "\030g"
+after 50
+send -- "\033\[C"
+after 50
+send -- "\030\022"
+set accepted_display [expect_re {REPORT:cd space.*dir/::::ready::4\r?\n}]
+if {![regexp {\x1b\[39m/REPORT:cd space} $accepted_display]} {
+    puts stderr "accepted suffix was not repainted with the default foreground"
+    exit 1
+}
+send -- "\030h"
+expect_re {HIGHLIGHTS:1::0 1 bold::\r?\n}
+send -- "\030k"
+
+# Ambiguous directory prefixes are left to ordinary Tab completion.
+send -- "\025cd al"
+after 50
+send -- "\030\022"
+expect_re {REPORT:cd al::::ready::4\r?\n}
+
+# Foreign POSTDISPLAY content is never replaced or cleared.
+send -- "\025"
+send -- "\030f"
+after 50
+send -- "\030\022"
+expect_re {REPORT:::FOREIGN::ready::4\r?\n}
+send -- "\030c"
+after 50
+
+# Moving away from the end suppresses an otherwise valid history suggestion.
+send -- "\025git s"
+after 50
+send -- "\033OD"
+after 50
+send -- "\030\022"
+expect_re {REPORT:git s::::ready::4\r?\n}
+
+# A full HISTSIZE ring still publishes the newest command incrementally.
+send -- "\001\013: fresh-history-value"
+send -- "\r"
+after 200
+send -- ": fresh"
+after 50
+send -- "\030\022"
+expect_re {REPORT:: fresh::::empty::0\r?\n}
+after 50
+send -- "\030\022"
+expect_re {REPORT:: fresh::.*history-value::empty::0\r?\n}
+
+send -- "\003"
+after 100
+send -- "exit\r"
+expect eof
+file delete -force $tmp

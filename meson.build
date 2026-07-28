@@ -39,14 +39,28 @@ zsh_generated_source = custom_target(
   output: 'nbsp_zsh.c',
   command: [python3, '@INPUT0@', '@INPUT1@', '@OUTPUT@'],
 )
+zsh_autosuggest_source = files('src/nbsp_autosuggest.zsh')
+zsh_autosuggest_generated_source = custom_target(
+  'nbsp-zsh-autosuggest-source',
+  input: ['tools/embed_zsh.py', 'src/nbsp_autosuggest.zsh'],
+  output: 'nbsp_autosuggest.c',
+  command: [
+    python3,
+    '@INPUT0@',
+    '@INPUT1@',
+    '@OUTPUT@',
+    'nbsp_print_zsh_autosuggest',
+  ],
+)
 
 core_sources = files(
   'src/nbsp_util.c',
   'src/nbsp_cache.c',
   'src/nbsp_data.c',
+  'src/nbsp_dirs.c',
   'src/nbsp_git.c',
   'src/nbsp_prompt.c',
-) + [zsh_generated_source]
+) + [zsh_generated_source, zsh_autosuggest_generated_source]
 
 core_lib = static_library(
   'nbsp-core',
@@ -92,6 +106,7 @@ install_data(
   'docs/reference/cli.mdx',
   'docs/reference/data-protocol.mdx',
   'docs/reference/configuration.mdx',
+  'docs/reference/autosuggestions.mdx',
   'docs/reference/external-editor.mdx',
   install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt', 'reference'),
 )

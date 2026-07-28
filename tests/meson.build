@@ -10,7 +10,7 @@ sh = find_program('sh')
 test(
   'cli',
   sh,
-  args: [files('test_cli.sh'), nbsp_exe, zsh_init_source],
+  args: [files('test_cli.sh'), nbsp_exe, zsh_init_source, zsh_autosuggest_source],
   timeout: 30,
 )
 
@@ -19,6 +19,11 @@ test(
   'zsh-syntax',
   zsh,
   args: ['-n', zsh_init_source],
+)
+test(
+  'zsh-autosuggest-syntax',
+  zsh,
+  args: ['-n', zsh_autosuggest_source],
 )
 
 expect = find_program('expect')
@@ -32,6 +37,18 @@ test(
   'zsh-detached',
   expect,
   args: [files('test_zsh_detached.exp'), nbsp_exe],
+  timeout: 30,
+)
+test(
+  'zsh-autosuggest',
+  expect,
+  args: [files('test_zsh_autosuggest.exp'), nbsp_exe],
+  timeout: 30,
+)
+test(
+  'zsh-autosuggest-no-memo',
+  expect,
+  args: [files('test_zsh_autosuggest.exp'), nbsp_exe, '--no-memo'],
   timeout: 30,
 )
 
