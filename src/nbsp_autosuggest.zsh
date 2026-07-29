@@ -490,6 +490,8 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
         _nbsp_as_full=
         _nbsp_as_full_kind=
         zle -R
+      elif [[ $WIDGET == _nbsp-as-v ]]; then
+        zle .vi-forward-char
       else
         zle .forward-char
       fi
@@ -514,20 +516,19 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
     add-zle-hook-widget line-pre-redraw _nbsp_as_pre_redraw
     add-zle-hook-widget line-finish _nbsp_as_line_finish
     zle -N nbsp-autosuggest-accept _nbsp_as_accept
+    zle -N _nbsp-as-v _nbsp_as_accept
     zle -N nbsp-autosuggest-toggle _nbsp_as_toggle
 
-    if [[ $widgets[forward-char] == builtin ]]; then
-      typeset -ga _nbsp_as_right_keys
-      _nbsp_as_right_keys=( "${terminfo[kcuf1]-}" $'\e[C' $'\eOC' )
-      for _nbsp_as_keymap in emacs viins; do
-        for _nbsp_as_right_key in "${(@u)_nbsp_as_right_keys}"; do
-          if [[ -n $_nbsp_as_right_key &&
-              $(bindkey -M "$_nbsp_as_keymap" "$_nbsp_as_right_key" 2>/dev/null) == *' forward-char' ]]; then
-            bindkey -M "$_nbsp_as_keymap" "$_nbsp_as_right_key" nbsp-autosuggest-accept
-          fi
-        done
+    for _nbsp_as_keymap _nbsp_as_fallback _nbsp_as_accept_widget in \
+        emacs forward-char nbsp-autosuggest-accept \
+        viins vi-forward-char _nbsp-as-v; do
+      for _nbsp_as_right_key in "${terminfo[kcuf1]-}" $'\e[C' $'\eOC'; do
+        if [[ $widgets[$_nbsp_as_fallback] == builtin && -n $_nbsp_as_right_key &&
+            $(bindkey -M "$_nbsp_as_keymap" "$_nbsp_as_right_key" 2>/dev/null) == *" $_nbsp_as_fallback" ]]; then
+          bindkey -M "$_nbsp_as_keymap" "$_nbsp_as_right_key" "$_nbsp_as_accept_widget"
+        fi
       done
-      unset _nbsp_as_keymap _nbsp_as_right_key _nbsp_as_right_keys
-    fi
+    done
+    unset _nbsp_as_accept_widget _nbsp_as_fallback _nbsp_as_keymap _nbsp_as_right_key
   fi
 fi

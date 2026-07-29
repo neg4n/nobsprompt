@@ -212,9 +212,13 @@ operators, unmatched quotes, named directories, multiple operands, and bare
 relative names affected by CDPATH remain ordinary history or Tab-completion
 cases. A failed or incomplete snapshot produces no directory suggestion.
 .PP
-Right Arrow accepts a suggestion only when its binding was the standard
+Right Arrow accepts a suggestion in native Emacs and Vi insert keymaps only
+when its binding was the standard
 .B forward-char
-widget. Custom bindings and foreign ZLE display text are preserved. The
+or
+.B vi-forward-char
+widget. Custom bindings and foreign ZLE display text are preserved. Tab remains
+Zsh completion and does not accept nbsp ghost text. The
 .B nbsp-autosuggest-accept
 and
 .B nbsp-autosuggest-toggle

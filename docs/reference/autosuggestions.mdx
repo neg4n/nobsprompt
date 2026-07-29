@@ -95,9 +95,10 @@ insertion; names are data, never evaluated as Zsh source.
 
 ## Accepting and controlling suggestions
 
-Right Arrow accepts ghost text only when that sequence was still bound to
-Zsh's built-in `forward-char` during initialization. Existing user or plugin
-bindings in `emacs` and `viins` are preserved.
+Right Arrow accepts ghost text in Zsh's native Emacs and Vi insert keymaps.
+Nobsprompt claims a terminal sequence only when it is still bound to the
+keymap's built-in `forward-char` or `vi-forward-char` widget during
+initialization. Existing user or plugin bindings are preserved.
 
 The widgets are public for explicit bindings:
 
@@ -108,8 +109,23 @@ bindkey '^X^A' nbsp-autosuggest-toggle
 
 Acceptance is ownership-checked: it inserts text only when the current
 `POSTDISPLAY` still equals the suffix produced by nobsprompt. Otherwise it
-falls back to the built-in `forward-char` widget. Highlight ownership is
-similarly narrow, so unrelated ZLE integrations keep their display state.
+falls back to the keymap's original character-movement widget. Highlight
+ownership is similarly narrow, so unrelated ZLE integrations keep their
+display state.
+
+Tab remains Zsh completion; it does not accept nobsprompt ghost text. An
+ambiguous completion can print a candidate list below the prompt, and Zsh's
+default `ALWAYS_LAST_PROMPT` behavior leaves that list visible while returning
+the cursor to the command line. This is native completion output. To stop Zsh
+from listing ambiguous candidates automatically, add this separately to your
+shell configuration:
+
+```zsh
+unsetopt AUTO_LIST
+```
+
+Nobsprompt deliberately does not clear completion lists or wrap completion
+widgets, so command-specific completions and completion plugins keep control.
 
 Set the ghost-text style before initialization if the default `fg=8` does not
 fit the terminal palette:

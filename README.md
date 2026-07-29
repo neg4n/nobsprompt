@@ -76,8 +76,10 @@ absent from that snapshot are not offered as navigation targets.
 
 Each directory worker reads one level of the typed parent—even for nested paths
 such as `~/Desktop/programming/w`—and subsequent matches use binary search over
-the cached snapshot. Right Arrow accepts a suggestion when its existing binding
-is the standard `forward-char`; custom bindings are never replaced. See
+the cached snapshot. Right Arrow accepts a suggestion in native Emacs and Vi
+insert keymaps when its existing binding is the standard `forward-char` or
+`vi-forward-char`; custom bindings are never replaced. Tab remains Zsh
+completion and never accepts nobsprompt ghost text. See
 [Autosuggestions](https://nobsprompt.pages.dev/reference/autosuggestions) for
 exact scope and compatibility.
 
