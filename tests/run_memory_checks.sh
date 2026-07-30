@@ -43,7 +43,7 @@ fi
 platform=$(uname -s)
 if test "$platform" = Darwin; then
   asan_base_options='abort_on_error=1:halt_on_error=1:strict_string_checks=1:detect_stack_use_after_return=1'
-  native_summary='native tests with Darwin malloc scribbling, guard edges, and per-allocation heap checks'
+  native_summary='native tests with Darwin malloc scribbling and guard edges, plus unit tests with per-allocation heap checks'
 else
   asan_base_options='abort_on_error=1:halt_on_error=1:strict_string_checks=1:check_initialization_order=1:detect_stack_use_after_return=1'
   native_summary='native tests (Darwin malloc diagnostics do not apply on this platform)'
@@ -189,8 +189,20 @@ else
 fi
 meson compile -C "$native_build"
 if test "$platform" = Darwin; then
-  native_wrapper='/usr/bin/env MallocNanoZone=0 MallocScribble=1 MallocPreScribble=1 MallocGuardEdges=1 MallocCheckHeapStart=1 MallocCheckHeapEach=1 MallocCheckHeapSleep=0 MallocCheckHeapAbort=1 MallocErrorAbort=1 MallocCorruptionAbort=1'
+  native_wrapper='/usr/bin/env MallocNanoZone=0 MallocScribble=1 MallocPreScribble=1 MallocGuardEdges=1 MallocErrorAbort=1 MallocCorruptionAbort=1'
   meson test -C "$native_build" --wrapper "$native_wrapper" --print-errorlogs
+  /usr/bin/env \
+    MallocNanoZone=0 \
+    MallocScribble=1 \
+    MallocPreScribble=1 \
+    MallocGuardEdges=1 \
+    MallocCheckHeapStart=1 \
+    MallocCheckHeapEach=1 \
+    MallocCheckHeapSleep=0 \
+    MallocCheckHeapAbort=1 \
+    MallocErrorAbort=1 \
+    MallocCorruptionAbort=1 \
+    "$native_build/tests/test-unit"
 else
   meson test -C "$native_build" --print-errorlogs
 fi

@@ -171,11 +171,12 @@ leaks](https://developer.apple.com/documentation/xcode/diagnosing-memory-thread-
 The runner also leaves ASan initialization-order checking off on macOS because
 [upstream Clang marks that option unsupported there](https://clang.llvm.org/docs/AddressSanitizer.html#initialization-order-checking).
 
-Darwin malloc scribbling, guard edges, and repeated heap checks are corruption
-diagnostics, not leak detection. They do not replace LeakSanitizer, and the
-suite does not claim to measure process memory footprint. Passing these checks
-is evidence for the exercised inputs and configurations, not proof of memory
-safety or exhaustive parser coverage.
+On Darwin, the full native suite runs with malloc scribbling and guard edges;
+the native C unit binary then runs directly with per-allocation heap checks.
+These are corruption diagnostics, not leak detection. They do not replace
+LeakSanitizer, and the suite does not claim to measure process memory footprint.
+Passing these checks is evidence for the exercised inputs and configurations,
+not proof of memory safety or exhaustive parser coverage.
 
 ## Architectural alternatives
 
