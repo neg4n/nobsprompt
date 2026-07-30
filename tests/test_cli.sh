@@ -78,8 +78,13 @@ zsh -dfc '
   check_rejected "cd \"unterminated"
   check_rejected "cd one two"
   cdpath=( "$3/Desktop/programming" )
+  check_path "cd relative" "$PWD" relative
+  check_path "cd ./relative" "$PWD/." relative
+  check_path "cd ../relative" "$PWD/.." relative
+  setopt posixcd
   check_rejected "cd relative"
   check_path "cd ./relative" "$PWD/." relative
+  check_path "cd ../relative" "$PWD/.." relative
 ' _ "$nbsp" "$tmp/path parser" "$tmp/home"
 if "$nbsp" init zsh --autosuggest --autosuggest >/dev/null 2>&1; then
   echo 'duplicate autosuggest flag unexpectedly succeeded' >&2

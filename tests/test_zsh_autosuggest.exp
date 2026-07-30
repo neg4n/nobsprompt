@@ -107,18 +107,22 @@ expect_re {EVAL-MARKER:CLEAN\r?\n}
 wait_prompt
 
 # PWD is scanned only when it is guaranteed to be the first cd search root.
-send -- {unsetopt posixcd; cdpath=( "$HOME/other" ); _as_parse_status default-no-dot 'cd sou'; cdpath=( . "$HOME/other" ); _as_parse_status default-dot-first 'cd sou'; cdpath=( '' "$HOME/other" ); _as_parse_status default-empty-first 'cd sou'; cdpath=( "$HOME/other" . ); _as_parse_status default-other-before-dot 'cd sou'; cdpath=( "$HOME/other" '' ); _as_parse_status default-other-before-empty 'cd sou'; setopt posixcd; cdpath=( "$HOME/other" ); _as_parse_status posix-no-dot 'cd sou'; cdpath=( . "$HOME/other" ); _as_parse_status posix-dot-first 'cd sou'; cdpath=( '' "$HOME/other" ); _as_parse_status posix-empty-first 'cd sou'; cdpath=( "$HOME/other" . ); _as_parse_status posix-other-before-dot 'cd sou'; _as_parse_status posix-absolute 'cd /tmp/sou'; _as_parse_status posix-tilde 'cd ~/Desktop'; cdpath=(); unsetopt posixcd}
+send -- {unsetopt posixcd; cdpath=( "$HOME/other" ); _as_parse_status default-no-dot 'cd sou'; cdpath=( . "$HOME/other" ); _as_parse_status default-dot-first 'cd sou'; cdpath=( '' "$HOME/other" ); _as_parse_status default-empty-first 'cd sou'; cdpath=( "$HOME/other" . ); _as_parse_status default-other-before-dot 'cd sou'; _as_parse_status default-explicit-dot 'cd ./sou'; _as_parse_status default-explicit-dotdot 'cd ../sou'; cdpath=( "$HOME/other" '' ); _as_parse_status default-other-before-empty 'cd sou'; setopt posixcd; cdpath=( "$HOME/other" ); _as_parse_status posix-no-dot 'cd sou'; cdpath=( . "$HOME/other" ); _as_parse_status posix-dot-first 'cd sou'; cdpath=( '' "$HOME/other" ); _as_parse_status posix-empty-first 'cd sou'; cdpath=( "$HOME/other" . ); _as_parse_status posix-other-before-dot 'cd sou'; _as_parse_status posix-explicit-dot 'cd ./sou'; _as_parse_status posix-explicit-dotdot 'cd ../sou'; _as_parse_status posix-absolute 'cd /tmp/sou'; _as_parse_status posix-tilde 'cd ~/Desktop'; cdpath=(); unsetopt posixcd}
 send -- "\r"
 foreach expected {
     default-no-dot:OK
     default-dot-first:OK
     default-empty-first:OK
     default-other-before-dot:NO
+    default-explicit-dot:OK
+    default-explicit-dotdot:OK
     default-other-before-empty:NO
     posix-no-dot:NO
     posix-dot-first:OK
     posix-empty-first:OK
     posix-other-before-dot:NO
+    posix-explicit-dot:OK
+    posix-explicit-dotdot:OK
     posix-absolute:OK
     posix-tilde:OK
 } {

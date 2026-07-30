@@ -327,7 +327,9 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       elif [[ $raw_path == '~'* ]]; then
         return 1
       fi
-      if (( ! expand_home )) && [[ $path != /* ]]; then
+      if (( ! expand_home )) &&
+          [[ $path != /* && $path != . && $path != .. &&
+             $path != ./* && $path != ../* ]]; then
         _nbsp_as_pwd_is_first_cd_root "$caller_posix_cd" || return 1
       fi
 
