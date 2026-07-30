@@ -79,7 +79,7 @@ send -- "\r"
 wait_prompt
 after 900
 
-send -- {nbsp_prompt_quote $'a%b\ebad'; quoted_value=${(%%)REPLY}; [[ $_nbsp_mode == detached && $PROMPT == $test_prompt && ${NBSP_DATA[schema_version]} == 1 && ${NBSP_DATA[git_valid]} == 1 && ${NBSP_DATA[git_branch]} == $NBSP_EXPECT_BRANCH && ${NBSP_DATA[git_modified]} == 1 && ${NBSP_DATA[node_version]} == 22.14.0 && $test_updates -ge 2 && $quoted_value == 'a%b?bad' && ! -e $NBSP_PROMPT_MARKER && $widgets[edit-command-line] == user:_nbsp_edit_command_line ]] && print -r -- DETACHED-DATA-OSC-EDITOR-PASS}
+send -- {nbsp_prompt_quote $'a%b\ebad'; quoted_value=${(%%)REPLY}; [[ $_nbsp_mode == detached && $PROMPT == $test_prompt && ${NBSP_DATA[schema_version]} == 2 && ${NBSP_DATA[git_valid]} == 1 && ${NBSP_DATA[git_branch]} == $NBSP_EXPECT_BRANCH && ${NBSP_DATA[git_modified]} == 1 && ${NBSP_DATA[node_version]} == 22.14.0 && $test_updates -ge 2 && $quoted_value == 'a%b?bad' && ! -e $NBSP_PROMPT_MARKER && $widgets[edit-command-line] == user:_nbsp_edit_command_line ]] && print -r -- DETACHED-DATA-OSC-EDITOR-PASS}
 send -- "\r"
 expect -re {DETACHED-DATA-OSC-EDITOR-PASS\r?\n}
 wait_prompt

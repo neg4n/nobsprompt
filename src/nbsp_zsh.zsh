@@ -83,26 +83,57 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
   }
 
   _nbsp_load_data() {
-    local key value callback
+    local LC_ALL=C key= value= callback
     local -A next
-    local -i count=0
-    while IFS= read -r -d '' key && IFS= read -r -d '' value; do
+    local -i count=0 valid=1 frame_complete=0
+    while (( valid )); do
+      key=
+      if ! IFS= read -r -d '' key; then
+        [[ -z $key ]] || valid=0
+        break
+      fi
+      value=
+      if ! IFS= read -r -d '' value; then
+        valid=0
+        break
+      fi
+      if (( frame_complete )); then
+        valid=0
+        break
+      fi
+      if [[ -z $key ]]; then
+        [[ $value == 0 ]] || valid=0
+        frame_complete=1
+        continue
+      fi
+      if [[ $key != [a-z]* || $key == *[!a-z0-9_]* ]]; then
+        valid=0
+        break
+      fi
       case $key in
         schema_version|cwd|path|status|duration_ms|jobs|node_version|\
         git_present|git_valid|git_branch|git_updated_ms|git_staged|\
         git_modified|git_untracked|git_conflicted|git_ahead|git_behind|\
-        git_stashes) ;;
-        *) return 1 ;;
+        git_stashes)
+          if (( $+next[$key] )); then
+            valid=0
+            break
+          fi
+          next[$key]=$value
+          (( ++count ))
+          ;;
+        *) ;;
       esac
-      (( $+next[$key] )) && return 1
-      next[$key]=$value
-      (( count++ ))
     done < <(command nbsp data \
-      --status "$_nbsp_last_status" \
-      --duration-ms "$_nbsp_last_duration_ms" \
-      --jobs "$_nbsp_last_jobs" \
-      --format nul)
-    (( count == 18 && next[schema_version] == 1 )) || return 1
+        --status "$_nbsp_last_status" \
+        --duration-ms "$_nbsp_last_duration_ms" \
+        --jobs "$_nbsp_last_jobs" \
+        --format nul
+      local -i frame_status=$?
+      print -rn -- $'\0'"$frame_status"$'\0'
+    )
+    (( valid && frame_complete && count == 18 )) || return 1
+    [[ ${next[schema_version]-} == 2 ]] || return 1
     NBSP_DATA=( "${(@kv)next}" )
     for callback in "${nbsp_data_update_functions[@]}"; do
       (( $+functions[$callback] )) && "$callback"

@@ -113,6 +113,22 @@ if "$nbsp" data --format json >/dev/null 2>&1; then
 else
   test $? -eq 2
 fi
+for deleted_cwd_command in prompt data; do
+  deleted_cwd="$tmp/deleted-cwd-$deleted_cwd_command"
+  deleted_cwd_output="$tmp/deleted-cwd-$deleted_cwd_command.out"
+  mkdir "$deleted_cwd"
+  if (
+    cd "$deleted_cwd"
+    rmdir "$deleted_cwd" || exit 10
+    "$nbsp" "$deleted_cwd_command" > "$deleted_cwd_output"
+  ); then
+    echo "$deleted_cwd_command from a deleted working directory unexpectedly succeeded" >&2
+    exit 1
+  else
+    test $? -eq 1
+  fi
+  test ! -s "$deleted_cwd_output"
+done
 if "$nbsp" init zsh --unknown >/dev/null 2>&1; then
   echo 'invalid init mode unexpectedly succeeded' >&2
   exit 1
@@ -212,7 +228,7 @@ printf '%s' "$selector_isolated" | grep -Fq "[$branch +1 ~1 ?1]"
 
 data=$(cd "$repo" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
   NBSP_CACHE_DIR="$cache" "$nbsp" data --status 7 --duration-ms 2450 --jobs 2)
-printf '%s\n' "$data" | grep -Fxq 'schema_version=1'
+printf '%s\n' "$data" | grep -Fxq 'schema_version=2'
 printf '%s\n' "$data" | grep -Fq 'cwd='
 printf '%s\n' "$data" | grep -Fq '%20'
 printf '%s\n' "$data" | grep -Fq '%25'
@@ -236,7 +252,7 @@ nul_check=$(cd "$repo" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
     done < <("$1" data --status 7 --duration-ms 2450 --jobs 2 --format nul)
     print -r -- "${#values} ${values[schema_version]} ${values[git_branch]} ${values[status]}"
   ' _ "$nbsp")
-test "$nul_check" = "18 1 $branch 7"
+test "$nul_check" = "18 2 $branch 7"
 
 cache_file=$(find "$cache/git" -name '*.cache' -type f | head -n 1)
 printf 'version=1\nrepo=corrupt\nupdated_ms=oops\n' > "$cache_file"

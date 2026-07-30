@@ -127,7 +127,7 @@ static int command_prompt(int argc, char **argv) {
 
     char cwd[PATH_MAX];
     if (!getcwd(cwd, sizeof cwd)) {
-        (void) snprintf(cwd, sizeof cwd, "?");
+        return 1;
     }
     char *prompt = nbsp_prompt_render(
         cwd, last_status, duration_ms, jobs, prompt_options);
@@ -189,7 +189,7 @@ static int command_data(int argc, char **argv) {
 
     char cwd[PATH_MAX];
     if (!getcwd(cwd, sizeof cwd)) {
-        (void) snprintf(cwd, sizeof cwd, "?");
+        return 1;
     }
     struct nbsp_prompt_data data;
     if (!nbsp_prompt_data_collect(cwd, last_status, duration_ms, jobs, &data)) {

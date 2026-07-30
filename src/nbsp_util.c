@@ -228,7 +228,10 @@ bool nbsp_prompt_quote(struct nbsp_buf *buf, const char *text, unsigned options)
 }
 
 static bool percent_safe(unsigned char value) {
-    return isalnum(value) || value == '-' || value == '_' || value == '.' || value == '/';
+    return (value >= (unsigned char) 'A' && value <= (unsigned char) 'Z') ||
+        (value >= (unsigned char) 'a' && value <= (unsigned char) 'z') ||
+        (value >= (unsigned char) '0' && value <= (unsigned char) '9') ||
+        value == '-' || value == '_' || value == '.' || value == '/';
 }
 
 char *nbsp_percent_encode(const char *text) {

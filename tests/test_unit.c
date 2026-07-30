@@ -117,6 +117,10 @@ static void test_escape_and_nvm(void) {
     free(decoded);
     free(encoded);
 
+    encoded = nbsp_percent_encode("AZaz09-_. /~\xC3\xA9");
+    CHECK(encoded && strcmp(encoded, "AZaz09-_.%20/%7E%C3%A9") == 0);
+    free(encoded);
+
     char too_long[NBSP_PATH_CAP + 32U];
     memset(too_long, 'a', sizeof too_long);
     too_long[0] = '/';
@@ -640,7 +644,7 @@ static void test_data_output(void) {
         char output[2048];
         size_t length = fread(output, 1U, sizeof output - 1U, stream);
         output[length] = '\0';
-        CHECK(strstr(output, "schema_version=1\n") == output);
+        CHECK(strstr(output, "schema_version=2\n") == output);
         CHECK(strstr(output, "cwd=/tmp/project%20with%20space%25\n"));
         CHECK(strstr(output, "git_branch=feature/100%25\n"));
         CHECK(strstr(output, "git_stashes=7\n"));
@@ -655,6 +659,9 @@ static void test_data_output(void) {
         CHECK(fseek(stream, 0L, SEEK_SET) == 0);
         unsigned char output[2048];
         size_t length = fread(output, 1U, sizeof output, stream);
+        static const unsigned char schema_prefix[] = "schema_version\0" "2";
+        CHECK(length >= sizeof schema_prefix &&
+            memcmp(output, schema_prefix, sizeof schema_prefix) == 0);
         unsigned separators = 0U;
         for (size_t i = 0U; i < length; ++i) {
             if (output[i] == '\0') ++separators;

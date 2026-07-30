@@ -59,7 +59,7 @@ bool nbsp_data_write(FILE *out,
     (void) snprintf(behind, sizeof behind, "%u", data->git_behind);
     (void) snprintf(stashes, sizeof stashes, "%u", data->git_stashes);
 
-    return write_record(out, format, "schema_version", "1") &&
+    return write_record(out, format, "schema_version", "2") &&
         write_record(out, format, "cwd", data->cwd) &&
         write_record(out, format, "path", data->path) &&
         write_record(out, format, "status", status) &&
