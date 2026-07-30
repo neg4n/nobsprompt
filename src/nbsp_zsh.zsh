@@ -1,7 +1,10 @@
+() {
+  emulate -L zsh
 if [[ -z ${_NBSP_INITIALIZED-} ]]; then
   typeset -g _NBSP_INITIALIZED=1
   typeset -g _nbsp_mode=${_NBSP_INIT_MODE:-prompt}
-  autoload -Uz add-zsh-hook edit-command-line
+  autoload -Uz add-zsh-hook
+  (( $+functions[edit-command-line] )) || autoload -Uz edit-command-line
   zmodload zsh/datetime
   zmodload zsh/parameter
   zmodload zsh/system 2>/dev/null
@@ -23,10 +26,23 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
     typeset -ga nbsp_data_update_functions
   fi
 
+  _nbsp_prompt_option_mask() {
+    local -i prompt_options=0
+    [[ -o promptpercent ]] && (( prompt_options |= 1 ))
+    [[ -o promptsubst ]] && (( prompt_options |= 2 ))
+    [[ -o promptbang ]] && (( prompt_options |= 4 ))
+    emulate -L zsh
+    REPLY=$prompt_options
+    return 0
+  }
+
   nbsp_prompt_quote() {
+    _nbsp_prompt_option_mask
+    local -i prompt_options=$REPLY
+    emulate -L zsh
     local LC_ALL=C input=${1-} char hex
     local -i index repetitions repeat substitute=0
-    [[ -o promptsubst ]] && substitute=1
+    (( prompt_options & 2 )) && substitute=1
     if (( substitute )); then
       REPLY='${(g::):-'
     else
@@ -36,8 +52,8 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
       char=$input[index]
       [[ $char == [[:cntrl:]] ]] && char='?'
       repetitions=1
-      if [[ $char == \! && -o promptbang ]] ||
-          [[ $char == % && -o promptpercent ]]; then
+      if { [[ $char == \! ]] && (( prompt_options & 4 )); } ||
+          { [[ $char == % ]] && (( prompt_options & 1 )); }; then
         repetitions=2
       fi
       for (( repeat = 0; repeat < repetitions; repeat++ )); do
@@ -50,14 +66,23 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
       done
     done
     (( substitute )) && REPLY+='}'
+    return 0
   }
 
   _nbsp_render() {
+    local -i prompt_option_mask
+    if (( $# )); then
+      prompt_option_mask=$1
+    else
+      _nbsp_prompt_option_mask
+      prompt_option_mask=$REPLY
+    fi
+    emulate -L zsh
     local rendered old pattern kept_prefix kept_suffix prompt_option_list
     local -a prompt_options
-    [[ -o promptpercent ]] && prompt_options+=(percent)
-    [[ -o promptsubst ]] && prompt_options+=(subst)
-    [[ -o promptbang ]] && prompt_options+=(bang)
+    (( prompt_option_mask & 1 )) && prompt_options+=(percent)
+    (( prompt_option_mask & 2 )) && prompt_options+=(subst)
+    (( prompt_option_mask & 4 )) && prompt_options+=(bang)
     prompt_option_list=${(j:,:)prompt_options}
     [[ -n $prompt_option_list ]] || prompt_option_list=none
     rendered=$(command nbsp prompt \
@@ -80,9 +105,11 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
       PROMPT=$rendered
     fi
     _nbsp_prompt_body=$rendered
+    return 0
   }
 
   _nbsp_load_data() {
+    emulate -L zsh
     local LC_ALL=C key= value= callback
     local -A next
     local -i count=0 valid=1 frame_complete=0
@@ -142,6 +169,7 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
   }
 
   _nbsp_cancel_refresh() {
+    emulate -L zsh
     if (( _nbsp_refresh_fd >= 0 )); then
       zle -F "$_nbsp_refresh_fd" 2>/dev/null
       { exec {_nbsp_refresh_fd}<&- } 2>/dev/null
@@ -149,15 +177,19 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
     fi
     _nbsp_refresh_again=0
     _nbsp_refresh_pwd=
+    return 0
   }
 
   _nbsp_refresh_done() {
+    _nbsp_prompt_option_mask
+    local -i prompt_option_mask=$REPLY
+    emulate -L zsh
     local fd=$1 ignored refresh_pwd=$_nbsp_refresh_pwd
     local -i refresh_again=$_nbsp_refresh_again
     read -r -u "$fd" ignored 2>/dev/null
     zle -F "$fd" 2>/dev/null
     { exec {fd}<&- } 2>/dev/null
-    (( fd == _nbsp_refresh_fd )) || return
+    (( fd == _nbsp_refresh_fd )) || return 0
     _nbsp_refresh_fd=-1
     _nbsp_refresh_again=0
     if [[ $PWD == $refresh_pwd ]]; then
@@ -167,19 +199,21 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
         if [[ $_nbsp_mode == detached ]]; then
           _nbsp_load_data && zle reset-prompt 2>/dev/null
         else
-          _nbsp_render
+          _nbsp_render "$prompt_option_mask"
           zle reset-prompt 2>/dev/null
         fi
       fi
     fi
+    return 0
   }
 
   _nbsp_schedule_refresh() {
+    emulate -L zsh
     local -i force=${1:-0}
     local -i raw_fd=-1
     local -a refresh_args=(refresh --cwd "$PWD" --notify)
     if (( _nbsp_refresh_fd >= 0 )); then
-      [[ $_nbsp_refresh_pwd == $PWD ]] && return
+      [[ $_nbsp_refresh_pwd == $PWD ]] && return 0
       _nbsp_cancel_refresh
     fi
     (( force )) && refresh_args+=(--force)
@@ -195,15 +229,22 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
     if ! zle -F "$_nbsp_refresh_fd" _nbsp_refresh_done 2>/dev/null; then
       _nbsp_cancel_refresh
     fi
+    return 0
   }
 
   _nbsp_preexec() {
+    emulate -L zsh
     (( _nbsp_refresh_fd >= 0 )) && _nbsp_refresh_again=1
     _nbsp_started_at=$EPOCHREALTIME
+    return 0
   }
 
   _nbsp_precmd() {
-    _nbsp_last_status=$?
+    local -i last_status=$?
+    _nbsp_prompt_option_mask
+    local -i prompt_option_mask=$REPLY
+    emulate -L zsh
+    _nbsp_last_status=$last_status
     if (( _nbsp_started_at > 0 )); then
       _nbsp_last_duration_ms=$(( (EPOCHREALTIME - _nbsp_started_at) * 1000.0 ))
     else
@@ -212,15 +253,18 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
     _nbsp_started_at=0
     _nbsp_last_jobs=${#jobstates}
     if [[ $_nbsp_mode == detached ]]; then
-      _nbsp_load_data
+      _nbsp_load_data || :
     else
-      _nbsp_render
+      _nbsp_render "$prompt_option_mask"
     fi
     _nbsp_schedule_refresh
+    return 0
   }
 
   _nbsp_chpwd() {
+    emulate -L zsh
     _nbsp_cancel_refresh
+    return 0
   }
 
   add-zsh-hook preexec _nbsp_preexec
@@ -228,6 +272,7 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
   add-zsh-hook chpwd _nbsp_chpwd
 
   _nbsp_edit_command_line() {
+    emulate -L zsh
     local -i editor_status=0 track_cursor=0 had_editor_style=0
     local -i changed_editor_style=0 is_vim=0
     local -i cursor=0 index=0
@@ -303,12 +348,13 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
     return $editor_status
   }
 
-  zle -N edit-command-line _nbsp_edit_command_line
+  zle -N nbsp-edit-command-line _nbsp_edit_command_line
   for _nbsp_keymap in emacs viins vicmd; do
     if [[ $(bindkey -M "$_nbsp_keymap" '\ee' 2>/dev/null) == *' undefined-key' ]]; then
-      bindkey -M "$_nbsp_keymap" '\ee' edit-command-line
+      bindkey -M "$_nbsp_keymap" '\ee' nbsp-edit-command-line
     fi
   done
   unset _nbsp_keymap
 fi
 unset _NBSP_INIT_MODE
+}

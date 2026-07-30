@@ -98,14 +98,14 @@ spawn env PATH=$bindir:$original_path TMPDIR=$editor_tmp \
     VISUAL=$visual_value EDITOR=$fallback_editor NBSP_VISUAL_EDITOR=$visual_editor \
     NBSP_FALLBACK_EDITOR=$fallback_editor NBSP_EDITOR_LOG=$editor_log zsh -dfi
 wait_prompt
-send -- {bindkey -v; bindkey -M emacs '\ee' self-insert}
+send -- {_nbsp_existing_edit_widget() { BUFFER+='PUBLIC'; }; zle -N edit-command-line _nbsp_existing_edit_widget; bindkey -v; bindkey -M emacs '\ee' self-insert}
 send -- "\r"
 wait_prompt
 send -- {eval "$(nbsp init zsh)"}
 send -- "\r"
 wait_prompt
 
-send -- {[[ $(bindkey -M emacs '\ee') == *' self-insert' && $(bindkey -M viins '\ee') == *' edit-command-line' && $(bindkey -M vicmd '\ee') == *' edit-command-line' ]] && print -r -- EDITOR-BINDINGS-PASS}
+send -- {[[ $widgets[edit-command-line] == user:_nbsp_existing_edit_widget && $widgets[nbsp-edit-command-line] == user:_nbsp_edit_command_line && $(bindkey -M emacs '\ee') == *' self-insert' && $(bindkey -M viins '\ee') == *' nbsp-edit-command-line' && $(bindkey -M vicmd '\ee') == *' nbsp-edit-command-line' ]] && print -r -- EDITOR-BINDINGS-PASS}
 send -- "\r"
 expect -re {EDITOR-BINDINGS-PASS\r?\n}
 wait_prompt

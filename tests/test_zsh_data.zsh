@@ -82,7 +82,11 @@ typeset -gx PATH=$test_tmp/fakebin:$PATH
 typeset -gx NBSP_TEST_FRAME=$good_frame
 typeset -gx NBSP_TEST_STATUS=0
 typeset -g _NBSP_INIT_MODE=detached
+setopt KSH_ARRAYS SH_WORD_SPLIT EXTENDED_GLOB
 source "$init_source"
+[[ -o ksharrays && -o shwordsplit && -o extendedglob ]] ||
+  fail 'initialization changed hostile caller options'
+unsetopt KSH_ARRAYS SH_WORD_SPLIT EXTENDED_GLOB
 
 typeset -gi callback_count=0
 data_protocol_callback() {
@@ -96,7 +100,13 @@ expect_accepted() {
   NBSP_TEST_FRAME=$frame
   NBSP_TEST_STATUS=0
   export NBSP_TEST_FRAME NBSP_TEST_STATUS
-  _nbsp_load_data || fail "$label was rejected"
+  setopt KSH_ARRAYS SH_WORD_SPLIT EXTENDED_GLOB
+  _nbsp_load_data
+  local -i load_status=$? options_preserved=0
+  [[ -o ksharrays && -o shwordsplit && -o extendedglob ]] && options_preserved=1
+  unsetopt KSH_ARRAYS SH_WORD_SPLIT EXTENDED_GLOB
+  (( load_status == 0 )) || fail "$label was rejected"
+  (( options_preserved )) || fail "$label changed hostile caller options"
   (( ${#NBSP_DATA} == 18 )) || fail "$label did not publish exactly 18 known fields"
   [[ ${NBSP_DATA[schema_version]-} == 2 ]] || fail "$label lost schema 2"
   [[ -n ${NBSP_DATA[cwd]-} ]] || fail "$label lost cwd"
@@ -110,7 +120,13 @@ expect_rejected() {
   NBSP_TEST_FRAME=$frame
   NBSP_TEST_STATUS=$producer_status
   export NBSP_TEST_FRAME NBSP_TEST_STATUS
-  if _nbsp_load_data; then
+  setopt KSH_ARRAYS SH_WORD_SPLIT EXTENDED_GLOB
+  _nbsp_load_data
+  local -i load_status=$? options_preserved=0
+  [[ -o ksharrays && -o shwordsplit && -o extendedglob ]] && options_preserved=1
+  unsetopt KSH_ARRAYS SH_WORD_SPLIT EXTENDED_GLOB
+  (( options_preserved )) || fail "$label changed hostile caller options"
+  if (( load_status == 0 )); then
     fail "$label was accepted"
   fi
   (( ${#NBSP_DATA} == 1 )) || fail "$label partially replaced NBSP_DATA"

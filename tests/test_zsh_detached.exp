@@ -74,12 +74,12 @@ spawn env PATH=$scheduled_path NBSP_REAL=$nbsp NBSP_REAL_GIT=$real_git \
 wait_prompt
 send -- "cd -- $repo\r"
 wait_prompt
-send -- {typeset -gi test_updates=0; detached_update() { (( test_updates++ )); }; typeset -ga nbsp_data_update_functions=(detached_update); setopt promptsubst; typeset -g test_prefix=$'%{\e]999;prefix\a%}' test_suffix=$'%{\e]999;suffix\a%}'; typeset -g test_prompt=${test_prefix}'D:${NBSP_DATA[git_branch]}:%# '${test_suffix}; PROMPT=$test_prompt; eval "$(nbsp init zsh --detached)"}
+send -- {typeset -gi test_updates=0; detached_update() { (( test_updates++ )); }; typeset -ga nbsp_data_update_functions=(detached_update); setopt promptsubst; bindkey -M emacs -r '\ee'; bindkey -M viins -r '\ee'; bindkey -M vicmd -r '\ee'; typeset -g test_prefix=$'%{\e]999;prefix\a%}' test_suffix=$'%{\e]999;suffix\a%}'; typeset -g test_prompt=${test_prefix}'D:${NBSP_DATA[git_branch]}:%# '${test_suffix}; PROMPT=$test_prompt; eval "$(nbsp init zsh --detached)"}
 send -- "\r"
 wait_prompt
 after 900
 
-send -- {nbsp_prompt_quote $'a%b\ebad'; quoted_value=${(%%)REPLY}; [[ $_nbsp_mode == detached && $PROMPT == $test_prompt && ${NBSP_DATA[schema_version]} == 2 && ${NBSP_DATA[git_valid]} == 1 && ${NBSP_DATA[git_branch]} == $NBSP_EXPECT_BRANCH && ${NBSP_DATA[git_modified]} == 1 && ${NBSP_DATA[node_version]} == 22.14.0 && $test_updates -ge 2 && $quoted_value == 'a%b?bad' && ! -e $NBSP_PROMPT_MARKER && $widgets[edit-command-line] == user:_nbsp_edit_command_line ]] && print -r -- DETACHED-DATA-OSC-EDITOR-PASS}
+send -- {nbsp_prompt_quote $'a%b\ebad'; quoted_value=${(%%)REPLY}; [[ $_nbsp_mode == detached && $PROMPT == $test_prompt && ${NBSP_DATA[schema_version]} == 2 && ${NBSP_DATA[git_valid]} == 1 && ${NBSP_DATA[git_branch]} == $NBSP_EXPECT_BRANCH && ${NBSP_DATA[git_modified]} == 1 && ${NBSP_DATA[node_version]} == 22.14.0 && $test_updates -ge 2 && $quoted_value == 'a%b?bad' && ! -e $NBSP_PROMPT_MARKER && ${+widgets[edit-command-line]} == 0 && $widgets[nbsp-edit-command-line] == user:_nbsp_edit_command_line && $(bindkey -M emacs '\ee') == *' nbsp-edit-command-line' && $(bindkey -M viins '\ee') == *' nbsp-edit-command-line' && $(bindkey -M vicmd '\ee') == *' nbsp-edit-command-line' ]] && print -r -- DETACHED-DATA-OSC-EDITOR-PASS}
 send -- "\r"
 expect -re {DETACHED-DATA-OSC-EDITOR-PASS\r?\n}
 wait_prompt
