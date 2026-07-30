@@ -260,6 +260,12 @@ static void test_git_discovery(void) {
     CHECK(strcmp(branch, "abcdef01") == 0);
     CHECK(write_text_file(head_path, "abcdef0123456789\n"));
     CHECK(!nbsp_git_read_branch(&repo, branch, sizeof branch));
+    CHECK(unlink(head_path) == 0);
+    CHECK(symlink("refs/heads/legacy-symlink", head_path) == 0);
+    CHECK(nbsp_git_read_branch(&repo, branch, sizeof branch));
+    CHECK(strcmp(branch, "legacy-symlink") == 0);
+    CHECK(unlink(head_path) == 0);
+    CHECK(write_text_file(head_path, "ref: refs/heads/main\n"));
 
     char outer_path[512];
     char outer_git[512];

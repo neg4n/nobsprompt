@@ -125,8 +125,14 @@ bool nbsp_git_discover(const char *cwd, struct nbsp_repo *out) {
         !S_ISDIR(cwd_info.st_mode)) {
         return false;
     }
+    dev_t start_device = cwd_info.st_dev;
 
     for (;;) {
+        struct stat current_info;
+        if (stat(current, &current_info) != 0 ||
+            current_info.st_dev != start_device) {
+            return false;
+        }
         char git_path[PATH_MAX];
         int count = snprintf(git_path, sizeof git_path, "%s%s.git",
             current,
@@ -174,6 +180,20 @@ bool nbsp_git_discover(const char *cwd, struct nbsp_repo *out) {
     return false;
 }
 
+static bool copy_symbolic_branch(const char *reference, char *out, size_t out_len) {
+    if (!reference || strncmp(reference, "refs/", 5U) != 0) return false;
+    const char *display = reference;
+    const char *heads = "refs/heads/";
+    if (strncmp(display, heads, strlen(heads)) == 0) {
+        display += strlen(heads);
+    }
+    size_t display_len = strlen(display);
+    if (display_len == 0U || display_len >= out_len ||
+        !value_has_no_space(display)) return false;
+    memcpy(out, display, display_len + 1U);
+    return true;
+}
+
 bool nbsp_git_read_branch(const struct nbsp_repo *repo, char *out, size_t out_len) {
     if (!repo || repo->git_dir[0] == '\0' || !out || out_len == 0U) {
         return false;
@@ -181,6 +201,16 @@ bool nbsp_git_read_branch(const struct nbsp_repo *repo, char *out, size_t out_le
     char head_path[PATH_MAX];
     int count = snprintf(head_path, sizeof head_path, "%s/HEAD", repo->git_dir);
     if (count < 0 || (size_t) count >= sizeof head_path) return false;
+    struct stat head_info;
+    if (lstat(head_path, &head_info) != 0) return false;
+    if (S_ISLNK(head_info.st_mode)) {
+        char reference[1024];
+        ssize_t length = readlink(head_path, reference, sizeof reference - 1U);
+        if (length <= 0 || (size_t) length >= sizeof reference) return false;
+        reference[length] = '\0';
+        return copy_symbolic_branch(reference, out, out_len);
+    }
+    if (!S_ISREG(head_info.st_mode)) return false;
     char line[1024];
     bool ok = read_first_line(head_path, line, sizeof line);
     if (!ok || line[0] == '\0') {
@@ -188,16 +218,7 @@ bool nbsp_git_read_branch(const struct nbsp_repo *repo, char *out, size_t out_le
     }
 
     if (strncmp(line, "ref: ", 5U) == 0) {
-        const char *display = line + 5U;
-        const char *heads = "refs/heads/";
-        if (strncmp(display, heads, strlen(heads)) == 0) {
-            display += strlen(heads);
-        }
-        size_t display_len = strlen(display);
-        if (display_len == 0U || display_len >= out_len ||
-            !value_has_no_space(display)) return false;
-        memcpy(out, display, display_len + 1U);
-        return true;
+        return copy_symbolic_branch(line + 5U, out, out_len);
     }
 
     size_t length = strlen(line);
@@ -500,6 +521,7 @@ static bool is_git_selector_environment(const char *entry) {
         "GIT_GRAFT_FILE",
         "GIT_NO_REPLACE_OBJECTS",
         "GIT_REPLACE_REF_BASE",
+        "GIT_REFERENCE_BACKEND",
         "GIT_QUARANTINE_PATH",
         "GIT_PREFIX",
         "GIT_SUPER_PREFIX",
@@ -564,35 +586,34 @@ static void reap_child(pid_t child) {
     }
 }
 
-static int collect_output(pid_t child, int fd, unsigned timeout_ms, struct nbsp_buf *output) {
-    uint64_t started = nbsp_monotonic_millis();
+static int collect_output(pid_t child,
+    int fd,
+    unsigned timeout_ms,
+    uint64_t started,
+    struct nbsp_buf *output) {
     char chunk[8192];
     bool eof = false;
-    bool reaped = false;
     int child_status = 0;
 
     for (;;) {
-        if (!reaped) {
+        if (eof) {
             pid_t waited = waitpid(child, &child_status, WNOHANG);
             if (waited == child) {
-                reaped = true;
+                return WIFEXITED(child_status) && WEXITSTATUS(child_status) == 0
+                    ? NBSP_GIT_OK
+                    : NBSP_GIT_ERROR;
             } else if (waited < 0 && errno != EINTR) {
                 kill_process_group(child);
                 reap_child(child);
                 return NBSP_GIT_ERROR;
             }
         }
-        if (reaped && eof) {
-            return WIFEXITED(child_status) && WEXITSTATUS(child_status) == 0
-                ? NBSP_GIT_OK
-                : NBSP_GIT_ERROR;
-        }
 
         uint64_t now = nbsp_monotonic_millis();
         uint64_t elapsed = now >= started ? now - started : (uint64_t) timeout_ms;
         if (elapsed >= (uint64_t) timeout_ms) {
             kill_process_group(child);
-            if (!reaped) reap_child(child);
+            reap_child(child);
             return NBSP_GIT_TIMEOUT;
         }
         uint64_t remaining = (uint64_t) timeout_ms - elapsed;
@@ -603,13 +624,13 @@ static int collect_output(pid_t child, int fd, unsigned timeout_ms, struct nbsp_
         if (ready < 0) {
             if (errno == EINTR) continue;
             kill_process_group(child);
-            if (!reaped) reap_child(child);
+            reap_child(child);
             return NBSP_GIT_ERROR;
         }
         if (ready == 0 || eof) continue;
         if ((poll_fd.revents & POLLNVAL) != 0) {
             kill_process_group(child);
-            if (!reaped) reap_child(child);
+            reap_child(child);
             return NBSP_GIT_ERROR;
         }
         if ((poll_fd.revents & (POLLIN | POLLHUP | POLLERR)) == 0) continue;
@@ -618,7 +639,7 @@ static int collect_output(pid_t child, int fd, unsigned timeout_ms, struct nbsp_
             now = nbsp_monotonic_millis();
             if (now < started || now - started >= (uint64_t) timeout_ms) {
                 kill_process_group(child);
-                if (!reaped) reap_child(child);
+                reap_child(child);
                 return NBSP_GIT_TIMEOUT;
             }
             ssize_t count = read(fd, chunk, sizeof chunk);
@@ -628,7 +649,7 @@ static int collect_output(pid_t child, int fd, unsigned timeout_ms, struct nbsp_
                     output->len > NBSP_GIT_OUTPUT_MAX - length ||
                     !nbsp_buf_append_n(output, chunk, length)) {
                     kill_process_group(child);
-                    if (!reaped) reap_child(child);
+                    reap_child(child);
                     return NBSP_GIT_ERROR;
                 }
             } else if (count == 0) {
@@ -638,7 +659,7 @@ static int collect_output(pid_t child, int fd, unsigned timeout_ms, struct nbsp_
                 break;
             } else if (errno != EINTR) {
                 kill_process_group(child);
-                if (!reaped) reap_child(child);
+                reap_child(child);
                 return NBSP_GIT_ERROR;
             }
         }
@@ -652,6 +673,7 @@ int nbsp_git_collect(const struct nbsp_repo *repo,
         return NBSP_GIT_ERROR;
     }
     memset(status, 0, sizeof *status);
+    uint64_t started = nbsp_monotonic_millis();
 
     int pipe_fd[2];
     if (pipe(pipe_fd) != 0) {
@@ -779,10 +801,11 @@ int nbsp_git_collect(const struct nbsp_repo *repo,
 
     struct nbsp_buf output;
     nbsp_buf_init(&output);
-    int result = collect_output(child, pipe_fd[0], timeout_ms, &output);
-    (void) close(pipe_fd[0]);
+    int result = collect_output(child, pipe_fd[0], timeout_ms, started, &output);
+    int read_close_status = close(pipe_fd[0]);
     if (result == NBSP_GIT_OK &&
         (attribute_destroy_status != 0 || action_destroy_status != 0 ||
+            read_close_status != 0 ||
             !output.data || memchr(output.data, '\0', output.len) != NULL ||
             !nbsp_git_parse_status(output.data, status))) {
         result = NBSP_GIT_ERROR;
