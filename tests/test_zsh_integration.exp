@@ -30,6 +30,8 @@ puts $editor_script {  printf '%s\n' FD-CLEAN >> "$NBSP_EDITOR_LOG"}
 puts $editor_script {fi}
 puts $editor_script {for arg in "$@"; do}
 puts $editor_script {  [[ $arg == --test-arg ]] && printf '%s\n' ARG-PASS >> "$NBSP_EDITOR_LOG"}
+puts $editor_script {  [[ $arg == "let g:nbsp_command_buffer=bufnr('%')" ]] && printf '%s\n' CURSOR-INIT-ARG >> "$NBSP_EDITOR_LOG"}
+puts $editor_script {  [[ $arg == 'autocmd VimLeave '*writefile* ]] && printf '%s\n' CURSOR-REPORT-ARG >> "$NBSP_EDITOR_LOG"}
 puts $editor_script {done}
 puts $editor_script {argv=( "${(@)argv:#--test-arg}" )}
 puts $editor_script {sleep 0.30}
@@ -133,7 +135,7 @@ send -- "\r"
 expect -re {EDITEDXX_ONE\r?\n}
 expect -re {EDITEDXX_TWO\r?\n}
 wait_prompt
-send -- {typeset -a restored_editor cursor_files; zstyle -a :zle:edit-command-line editor restored_editor; cursor_files=( $TMPDIR/nbsp-edit-cursor.*(N) ); editor_state=$(<$NBSP_EDITOR_LOG); [[ ${restored_editor[1]} == $NBSP_VISUAL_EDITOR && ${restored_editor[2]} == --test-arg && $editor_state == *VISUAL* && $editor_state == *ARG-PASS* && $editor_state != *EDITOR* && $editor_state != *FD-LEAK* && $#cursor_files == 0 && $PROMPT == ${test_prefix}*${test_suffix} ]] && print -ru2 -- EDITOR-PRECEDENCE-FD-WRAPPER-PASS}
+send -- {typeset -a restored_editor cursor_files; zstyle -a :zle:edit-command-line editor restored_editor; cursor_files=( $TMPDIR/nbsp-edit-cursor.*(N) ); editor_state=$(<$NBSP_EDITOR_LOG); [[ ${restored_editor[1]} == $NBSP_VISUAL_EDITOR && ${restored_editor[2]} == --test-arg && $editor_state == *VISUAL* && $editor_state == *ARG-PASS* && $editor_state == *CURSOR-INIT-ARG* && $editor_state == *CURSOR-REPORT-ARG* && $editor_state != *EDITOR* && $editor_state != *FD-LEAK* && $#cursor_files == 0 && $PROMPT == ${test_prefix}*${test_suffix} ]] && print -ru2 -- EDITOR-PRECEDENCE-FD-WRAPPER-PASS}
 send -- "\r"
 expect -re {EDITOR-PRECEDENCE-FD-WRAPPER-PASS\r?\n}
 wait_prompt

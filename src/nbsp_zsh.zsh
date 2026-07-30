@@ -308,7 +308,10 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
     fi
 
     {
-      edit-command-line
+      () {
+        local -h WIDGET=edit-command-line
+        edit-command-line
+      }
       editor_status=$?
     } always {
       if (( changed_editor_style )); then
