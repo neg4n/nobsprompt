@@ -93,6 +93,20 @@ if "$nbsp" prompt --status 999 >/dev/null 2>&1; then
 else
   test $? -eq 2
 fi
+for invalid_prompt_options in '' percent,percent none,percent percent,unknown percent,; do
+  if "$nbsp" prompt --prompt-options "$invalid_prompt_options" >/dev/null 2>&1; then
+    echo "invalid prompt options unexpectedly succeeded: $invalid_prompt_options" >&2
+    exit 1
+  else
+    test $? -eq 2
+  fi
+done
+plain_prompt=$(cd "$tmp" && "$nbsp" prompt --status 1 --prompt-options none)
+printf '%s' "$plain_prompt" | grep -Fq 'e1'
+if printf '%s' "$plain_prompt" | grep -Eq '%F\{|%#|%f'; then
+  echo 'plain prompt unexpectedly emitted percent escapes' >&2
+  exit 1
+fi
 if "$nbsp" data --format json >/dev/null 2>&1; then
   echo 'invalid data format unexpectedly succeeded' >&2
   exit 1
@@ -223,6 +237,20 @@ printf '%s' "$worktree_warm" | grep -Fq '[worktree-check]'
 git -C "$worktree" switch -qc 'feature/100%'
 percent_prompt=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
 printf '%s' "$percent_prompt" | grep -Fq '[feature/100%%]'
+
+danger_branch='feature/$(touch${IFS}$NBSP_PROMPT_MARKER)-`touch${IFS}$NBSP_PROMPT_MARKER`-!-%'
+git -C "$worktree" switch -qc "$danger_branch"
+danger_prompt=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" \
+  "$nbsp" prompt --prompt-options percent,subst,bang)
+printf '%s' "$danger_prompt" | grep -Fq '${(g::):-'
+if printf '%s' "$danger_prompt" | grep -Fq '$(touch'; then
+  echo 'PROMPT_SUBST-safe renderer leaked raw command substitution syntax' >&2
+  exit 1
+fi
+prompt_marker="$tmp/prompt-subst-ran"
+NBSP_PROMPT_MARKER="$prompt_marker" NBSP_RENDERED_PROMPT="$danger_prompt" \
+  zsh -dfc 'setopt promptpercent promptsubst promptbang; PROMPT=$NBSP_RENDERED_PROMPT; print -Pr -- "$PROMPT" >/dev/null'
+test ! -e "$prompt_marker"
 
 git -C "$worktree" checkout --detach -q
 detached=$(git -C "$worktree" rev-parse --short=8 HEAD)

@@ -51,7 +51,7 @@ not hidden or redirected.
 directory, escape `cwd` inside your callback:
 
 ```zsh
-nbsp_prompt_escape "${NBSP_DATA[cwd]}"
+nbsp_prompt_quote "${NBSP_DATA[cwd]}"
 full_path=$REPLY
 ```
 
@@ -82,45 +82,58 @@ fi
 
 ## Safe prompt text
 
-Zsh treats `%` and control bytes specially during prompt expansion. Escape
-dynamic values before inserting them:
+Zsh prompt options change which bytes are interpreted during prompt expansion.
+Quote dynamic values before inserting them:
 
 ```zsh
-nbsp_prompt_escape "${NBSP_DATA[path]}"
+nbsp_prompt_quote "${NBSP_DATA[path]}"
 local safe_path=$REPLY
 ```
 
-`nbsp_prompt_escape`:
+`nbsp_prompt_quote`:
 
-- writes the escaped value to `REPLY`;
+- writes the quoted value to `REPLY`;
 - replaces control bytes with `?`;
-- doubles `%`;
+- doubles `%` when `PROMPT_PERCENT` is enabled;
+- encodes the complete value as one non-recursive Zsh parameter expression
+  when `PROMPT_SUBST` is enabled, so `$`, backticks, backslashes, quotes, and
+  other shell syntax remain data;
+- doubles `!` when `PROMPT_BANG` is enabled;
 - does not start a process.
 
-Do not insert unescaped raw fields into `PROMPT`, `RPROMPT`, or a
-`PROMPT_SUBST` expression.
+The helper reads but never changes the current option state. Quote and display
+the value under the same `PROMPT_PERCENT`, `PROMPT_SUBST`, and `PROMPT_BANG`
+settings; call it again after changing any of those options. Do not insert raw
+fields into `PROMPT`, `RPROMPT`, or a `PROMPT_SUBST` expression.
 
 ## Prompt substitution
 
-Callbacks can prepare escaped values while `PROMPT_SUBST` performs final
-expansion on each redraw:
+Callbacks can place quoted values into the prompt string while `PROMPT_SUBST`
+performs final expansion on each redraw:
 
 ```zsh
 setopt promptsubst
 
-typeset -g MY_PATH MY_BRANCH
 prepare_prompt_data() {
-  nbsp_prompt_escape "${NBSP_DATA[path]}"
-  MY_PATH=$REPLY
-  nbsp_prompt_escape "${NBSP_DATA[git_branch]}"
-  MY_BRANCH=$REPLY
+  local path branch=
+  nbsp_prompt_quote "${NBSP_DATA[path]}"
+  path=$REPLY
+  if [[ -n ${NBSP_DATA[git_branch]} ]]; then
+    nbsp_prompt_quote "${NBSP_DATA[git_branch]}"
+    branch=" [$REPLY]"
+  fi
+  PROMPT="${path}${branch} %# "
 }
 
 nbsp_data_update_functions+=(prepare_prompt_data)
 prepare_prompt_data
 
-PROMPT='${MY_PATH}${MY_BRANCH:+ [${MY_BRANCH}]} %# '
 ```
+
+Assign the helper result into the actual prompt string in the callback, as
+above. Hiding that result behind another parameter reference would add an
+extra expansion level; Zsh deliberately does not recursively rescan parameter
+results as new prompt source.
 
 ## OSC sequences
 

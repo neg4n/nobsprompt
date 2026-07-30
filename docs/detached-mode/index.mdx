@@ -36,11 +36,11 @@ eval "$(nbsp init zsh --detached --autosuggest)"
 minimal_prompt() {
   local path branch=
 
-  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  nbsp_prompt_quote "${NBSP_DATA[path]}"
   path=$REPLY
 
   if [[ ${NBSP_DATA[git_present]} == 1 ]]; then
-    nbsp_prompt_escape "${NBSP_DATA[git_branch]}"
+    nbsp_prompt_quote "${NBSP_DATA[git_branch]}"
     branch=" [$REPLY]"
   fi
 
@@ -56,7 +56,7 @@ it after later data updates, including completed asynchronous Git refreshes.
 
 :::warning
 Always pass paths, branch names, and other externally derived strings through
-`nbsp_prompt_escape` before inserting them into a Zsh prompt.
+`nbsp_prompt_quote` before inserting them into a Zsh prompt.
 :::
 
 ## Ownership boundary

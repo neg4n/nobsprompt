@@ -28,8 +28,14 @@ static void exercise_input(const uint8_t *data, size_t size) {
     struct nbsp_git_status status;
     (void) nbsp_git_parse_status(input, &status);
 
-    char *escaped = nbsp_prompt_escape(input);
-    free(escaped);
+    unsigned prompt_options = 0U;
+    if ((size & 1U) != 0U) prompt_options |= NBSP_PROMPT_PERCENT;
+    if ((size & 2U) != 0U) prompt_options |= NBSP_PROMPT_SUBST;
+    if ((size & 4U) != 0U) prompt_options |= NBSP_PROMPT_BANG;
+    struct nbsp_buf quoted;
+    nbsp_buf_init(&quoted);
+    (void) nbsp_prompt_quote(&quoted, input, prompt_options);
+    nbsp_buf_free(&quoted);
 
     char *encoded = nbsp_percent_encode(input);
     if (encoded) {
@@ -50,7 +56,8 @@ static void exercise_input(const uint8_t *data, size_t size) {
     char *prompt = nbsp_prompt_render(input,
         (int) (size & 1U),
         (unsigned long) size,
-        (unsigned) (size & 7U));
+        (unsigned) (size & 7U),
+        prompt_options);
     free(prompt);
 
     struct nbsp_buf buf;

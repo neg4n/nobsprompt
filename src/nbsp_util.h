@@ -13,6 +13,12 @@ struct nbsp_buf {
     size_t cap;
 };
 
+enum nbsp_prompt_options {
+    NBSP_PROMPT_PERCENT = 1U << 0,
+    NBSP_PROMPT_SUBST = 1U << 1,
+    NBSP_PROMPT_BANG = 1U << 2
+};
+
 void nbsp_buf_init(struct nbsp_buf *buf);
 void nbsp_buf_free(struct nbsp_buf *buf);
 bool nbsp_buf_append_n(struct nbsp_buf *buf, const char *text, size_t len);
@@ -24,7 +30,7 @@ char *nbsp_buf_take(struct nbsp_buf *buf);
 char *nbsp_strdup(const char *text);
 char *nbsp_path_abbreviate(const char *cwd);
 bool nbsp_path_abbreviate_into(const char *cwd, char *out, size_t out_len);
-char *nbsp_prompt_escape(const char *text);
+bool nbsp_prompt_quote(struct nbsp_buf *buf, const char *text, unsigned options);
 char *nbsp_percent_encode(const char *text);
 char *nbsp_percent_decode(const char *text);
 char *nbsp_nvm_version(const char *nvm_bin);

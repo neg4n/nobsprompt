@@ -25,7 +25,7 @@ git_branch=main
 
 `cwd` is the full physical working directory and `path` is its abbreviated
 display form. Detached callbacks can render `NBSP_DATA[cwd]` after passing it
-through `nbsp_prompt_escape`; they do not need to start `realpath`.
+through `nbsp_prompt_quote`; they do not need to start `realpath`.
 
 The default output is a versioned sequence of `key=value` records. Values use
 percent encoding, so common values remain readable while spaces, newlines,

@@ -35,10 +35,36 @@ static void test_paths(void) {
     free(path);
 }
 
+static char *prompt_quote(unsigned options) {
+    struct nbsp_buf quoted;
+    nbsp_buf_init(&quoted);
+    CHECK(nbsp_prompt_quote(&quoted, "100% $(x) `y` ! \\\033\n", options));
+    return nbsp_buf_take(&quoted);
+}
+
 static void test_escape_and_nvm(void) {
-    char *escaped = nbsp_prompt_escape("feature/100%\033bad\n");
-    CHECK(escaped && strcmp(escaped, "feature/100%%?bad?") == 0);
-    free(escaped);
+    char *quoted = prompt_quote(0U);
+    CHECK(quoted && strcmp(quoted, "100% $(x) `y` ! \\??") == 0);
+    free(quoted);
+
+    quoted = prompt_quote(NBSP_PROMPT_PERCENT);
+    CHECK(quoted && strcmp(quoted, "100%% $(x) `y` ! \\??") == 0);
+    free(quoted);
+
+    quoted = prompt_quote(NBSP_PROMPT_BANG);
+    CHECK(quoted && strcmp(quoted, "100% $(x) `y` !! \\??") == 0);
+    free(quoted);
+
+    quoted = prompt_quote(
+        NBSP_PROMPT_PERCENT | NBSP_PROMPT_SUBST | NBSP_PROMPT_BANG);
+    CHECK(quoted && strncmp(quoted, "${(g::):-", 9U) == 0);
+    CHECK(quoted && quoted[strlen(quoted) - 1U] == '}');
+    CHECK(quoted && strstr(quoted, "$(x)") == NULL);
+    CHECK(quoted && strchr(quoted, '`') == NULL);
+    CHECK(quoted && strstr(quoted, "\\x25\\x25"));
+    CHECK(quoted && strstr(quoted, "\\x21\\x21"));
+    CHECK(quoted && strstr(quoted, "\\x3F\\x3F"));
+    free(quoted);
 
     char *version = nbsp_nvm_version("/Users/test/.nvm/versions/node/v22.14.0/bin");
     CHECK(version && strcmp(version, "22.14.0") == 0);
@@ -162,7 +188,8 @@ static void test_buffer_growth(void) {
 static void test_prompt(void) {
     CHECK(setenv("HOME", "/Users/test", 1) == 0);
     CHECK(setenv("NVM_BIN", "/Users/test/.nvm/versions/node/v20.1.0/bin", 1) == 0);
-    char *prompt = nbsp_prompt_render("/Users/test/code/app", 1, 2450UL, 2U);
+    char *prompt = nbsp_prompt_render(
+        "/Users/test/code/app", 1, 2450UL, 2U, NBSP_PROMPT_PERCENT);
     CHECK(prompt != NULL);
     CHECK(prompt && strstr(prompt, "%F{default}/U/t/c/app%f"));
     CHECK(prompt && strstr(prompt, "[node:20.1.0]"));
@@ -172,10 +199,29 @@ static void test_prompt(void) {
     free(prompt);
 
     CHECK(unsetenv("NVM_BIN") == 0);
-    prompt = nbsp_prompt_render("/Users/test/code/app", 0, 0UL, 0U);
+    prompt = nbsp_prompt_render(
+        "/Users/test/code/app", 0, 0UL, 0U, NBSP_PROMPT_PERCENT);
     CHECK(prompt && strstr(prompt, " %# "));
     CHECK(prompt && !strstr(prompt, "e0%#"));
     CHECK(prompt && !strstr(prompt, "%F{green}"));
+    free(prompt);
+
+    prompt = nbsp_prompt_render(
+        "/tmp/100%$(touch${IFS}$NBSP_MARKER)`echo`!",
+        1,
+        0UL,
+        0U,
+        NBSP_PROMPT_PERCENT | NBSP_PROMPT_SUBST | NBSP_PROMPT_BANG);
+    CHECK(prompt && strstr(prompt, "${(g::):-"));
+    CHECK(prompt && strstr(prompt, "\\x25\\x25"));
+    CHECK(prompt && strstr(prompt, "$(touch") == NULL);
+    CHECK(prompt && strchr(prompt, '`') == NULL);
+    free(prompt);
+
+    prompt = nbsp_prompt_render("/tmp/100%", 1, 0UL, 0U, 0U);
+    CHECK(prompt && strstr(prompt, "100%"));
+    CHECK(prompt && !strstr(prompt, "%F{"));
+    CHECK(prompt && !strstr(prompt, "%#"));
     free(prompt);
 }
 

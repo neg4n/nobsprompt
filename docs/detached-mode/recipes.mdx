@@ -17,11 +17,11 @@ deliberately.
 ```zsh
 git_prompt() {
   local path git= branch
-  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  nbsp_prompt_quote "${NBSP_DATA[path]}"
   path=$REPLY
 
   if [[ ${NBSP_DATA[git_present]} == 1 ]]; then
-    nbsp_prompt_escape "${NBSP_DATA[git_branch]}"
+    nbsp_prompt_quote "${NBSP_DATA[git_branch]}"
     branch=$REPLY
     git=" %F{cyan}git:${branch}%f"
     (( NBSP_DATA[git_staged] ))     && git+=" %F{green}+${NBSP_DATA[git_staged]}%f"
@@ -46,7 +46,7 @@ git_prompt
 ```zsh
 two_line_prompt() {
   local path state=
-  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  nbsp_prompt_quote "${NBSP_DATA[path]}"
   path=$REPLY
 
   if (( NBSP_DATA[status] )); then
@@ -66,12 +66,12 @@ two_line_prompt
 ```zsh
 right_prompt() {
   local path node= right=
-  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  nbsp_prompt_quote "${NBSP_DATA[path]}"
   path=$REPLY
   PROMPT="${path} %# "
 
   if [[ -n ${NBSP_DATA[node_version]} ]]; then
-    nbsp_prompt_escape "${NBSP_DATA[node_version]}"
+    nbsp_prompt_quote "${NBSP_DATA[node_version]}"
     node=$REPLY
     right+="%F{green}node ${node}%f"
   fi
@@ -94,11 +94,11 @@ Font, your presentation can use its glyphs:
 ```zsh
 nerd_prompt() {
   local path branch=
-  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  nbsp_prompt_quote "${NBSP_DATA[path]}"
   path=$REPLY
 
   if [[ ${NBSP_DATA[git_present]} == 1 ]]; then
-    nbsp_prompt_escape "${NBSP_DATA[git_branch]}"
+    nbsp_prompt_quote "${NBSP_DATA[git_branch]}"
     branch=" %F{cyan} $REPLY%f"
   fi
 
@@ -114,24 +114,26 @@ Replace ``, ``, and `❯` with `dir`, `git`, and `>` for a portable versio
 
 ## Prompt substitution
 
-Prepare escaped values in the callback and leave final expansion to
+Place quoted values in the prompt string from the callback and leave final expansion to
 `PROMPT_SUBST`:
 
 ```zsh
 setopt promptsubst
 
-typeset -g MY_PATH MY_BRANCH
 prepare_prompt_data() {
-  nbsp_prompt_escape "${NBSP_DATA[path]}"
-  MY_PATH=$REPLY
-  nbsp_prompt_escape "${NBSP_DATA[git_branch]}"
-  MY_BRANCH=$REPLY
+  local path branch=
+  nbsp_prompt_quote "${NBSP_DATA[path]}"
+  path=$REPLY
+  if [[ -n ${NBSP_DATA[git_branch]} ]]; then
+    nbsp_prompt_quote "${NBSP_DATA[git_branch]}"
+    branch=" [$REPLY]"
+  fi
+  PROMPT="${path}${branch} %# "
 }
 
 nbsp_data_update_functions+=(prepare_prompt_data)
 prepare_prompt_data
 
-PROMPT='${MY_PATH}${MY_BRANCH:+ [${MY_BRANCH}]} %# '
 ```
 
 :::warning
@@ -143,7 +145,7 @@ Do not insert unescaped raw fields into a `PROMPT_SUBST` expression.
 ```zsh
 title_prompt() {
   local path
-  nbsp_prompt_escape "${NBSP_DATA[path]}"
+  nbsp_prompt_quote "${NBSP_DATA[path]}"
   path=$REPLY
 
   # %{\e]0;...\a%} changes the title without occupying prompt width.

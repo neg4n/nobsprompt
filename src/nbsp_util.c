@@ -199,29 +199,32 @@ char *nbsp_path_abbreviate(const char *cwd) {
     return nbsp_path_abbreviate_into(cwd, path, sizeof path) ? nbsp_strdup(path) : NULL;
 }
 
-char *nbsp_prompt_escape(const char *text) {
-    if (!text) {
-        return nbsp_strdup("");
+bool nbsp_prompt_quote(struct nbsp_buf *buf, const char *text, unsigned options) {
+    if (!buf || !text) {
+        return false;
     }
-    struct nbsp_buf buf;
-    nbsp_buf_init(&buf);
+
+    static const char hex[] = "0123456789ABCDEF";
+    bool substitute = (options & NBSP_PROMPT_SUBST) != 0U;
+    if (substitute && !nbsp_buf_append(buf, "${(g::):-")) return false;
+
     for (const unsigned char *p = (const unsigned char *) text; *p; ++p) {
-        if (*p == '%') {
-            if (!nbsp_buf_append(&buf, "%%")) {
-                nbsp_buf_free(&buf);
-                return NULL;
+        unsigned char value = (*p < 32U || *p == 127U) ? '?' : *p;
+        unsigned repetitions = 1U;
+        if (((options & NBSP_PROMPT_BANG) != 0U && value == '!') ||
+            ((options & NBSP_PROMPT_PERCENT) != 0U && value == '%')) {
+            repetitions = 2U;
+        }
+        for (unsigned i = 0U; i < repetitions; ++i) {
+            if (substitute) {
+                char encoded[] = {'\\', 'x', hex[value >> 4U], hex[value & 15U]};
+                if (!nbsp_buf_append_n(buf, encoded, sizeof encoded)) return false;
+            } else if (!nbsp_buf_append_char(buf, (char) value)) {
+                return false;
             }
-        } else if (*p < 32U || *p == 127U) {
-            if (!nbsp_buf_append_char(&buf, '?')) {
-                nbsp_buf_free(&buf);
-                return NULL;
-            }
-        } else if (!nbsp_buf_append_char(&buf, (char) *p)) {
-            nbsp_buf_free(&buf);
-            return NULL;
         }
     }
-    return nbsp_buf_take(&buf);
+    return !substitute || nbsp_buf_append_char(buf, '}');
 }
 
 static bool percent_safe(unsigned char value) {

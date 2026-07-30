@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "nbsp_cache.h"
 #include "nbsp_git.h"
@@ -79,45 +80,56 @@ bool nbsp_prompt_data_collect(const char *cwd,
     return true;
 }
 
-static bool append_escaped(struct nbsp_buf *buf, const char *text) {
-    for (const unsigned char *p = (const unsigned char *) text; *p; ++p) {
-        if (*p == '%') {
-            if (!nbsp_buf_append(buf, "%%")) return false;
-        } else if (*p < 32U || *p == 127U) {
-            if (!nbsp_buf_append_char(buf, '?')) return false;
-        } else if (!nbsp_buf_append_char(buf, (char) *p)) {
-            return false;
-        }
-    }
-    return true;
+static bool append_color_start(struct nbsp_buf *buf, const char *color, unsigned options) {
+    return (options & NBSP_PROMPT_PERCENT) == 0U ||
+        nbsp_buf_appendf(buf, "%%F{%s}", color);
 }
 
-static bool append_colored(struct nbsp_buf *buf, const char *color, const char *text) {
-    return nbsp_buf_appendf(buf, "%%F{%s}", color) &&
-        append_escaped(buf, text) &&
-        nbsp_buf_append(buf, "%f");
+static bool append_color_end(struct nbsp_buf *buf, unsigned options) {
+    return (options & NBSP_PROMPT_PERCENT) == 0U || nbsp_buf_append(buf, "%f");
 }
 
-static bool append_git(struct nbsp_buf *buf, const struct nbsp_prompt_data *data) {
-    if (!nbsp_buf_append(buf, "%F{default}[")) {
-        return false;
-    }
-    bool ok = append_escaped(buf, data->git_branch);
+static bool append_colored(struct nbsp_buf *buf,
+    const char *color,
+    const char *text,
+    unsigned options) {
+    return append_color_start(buf, color, options) &&
+        nbsp_prompt_quote(buf, text, options) &&
+        append_color_end(buf, options);
+}
+
+static bool append_count(struct nbsp_buf *buf,
+    const char *marker,
+    unsigned count,
+    unsigned options) {
+    return nbsp_buf_append_char(buf, ' ') &&
+        nbsp_prompt_quote(buf, marker, options) &&
+        nbsp_buf_appendf(buf, "%u", count);
+}
+
+static bool append_git(struct nbsp_buf *buf,
+    const struct nbsp_prompt_data *data,
+    unsigned options) {
+    bool ok = append_color_start(buf, "default", options) &&
+        nbsp_buf_append_char(buf, '[') &&
+        nbsp_prompt_quote(buf, data->git_branch, options);
     if (ok && data->git_valid) {
-        if (data->git_staged) ok = nbsp_buf_appendf(buf, " +%u", data->git_staged);
-        if (ok && data->git_modified) ok = nbsp_buf_appendf(buf, " ~%u", data->git_modified);
-        if (ok && data->git_untracked) ok = nbsp_buf_appendf(buf, " ?%u", data->git_untracked);
-        if (ok && data->git_conflicted) ok = nbsp_buf_appendf(buf, " !%u", data->git_conflicted);
-        if (ok && data->git_ahead) ok = nbsp_buf_appendf(buf, " ^%u", data->git_ahead);
-        if (ok && data->git_behind) ok = nbsp_buf_appendf(buf, " v%u", data->git_behind);
-        if (ok && data->git_stashes) ok = nbsp_buf_appendf(buf, " *%u", data->git_stashes);
+        if (data->git_staged) ok = append_count(buf, "+", data->git_staged, options);
+        if (ok && data->git_modified) ok = append_count(buf, "~", data->git_modified, options);
+        if (ok && data->git_untracked) ok = append_count(buf, "?", data->git_untracked, options);
+        if (ok && data->git_conflicted) ok = append_count(buf, "!", data->git_conflicted, options);
+        if (ok && data->git_ahead) ok = append_count(buf, "^", data->git_ahead, options);
+        if (ok && data->git_behind) ok = append_count(buf, "v", data->git_behind, options);
+        if (ok && data->git_stashes) ok = append_count(buf, "*", data->git_stashes, options);
     } else if (ok) {
         ok = nbsp_buf_append(buf, " ...");
     }
-    return ok && nbsp_buf_append(buf, "]%f");
+    return ok && nbsp_buf_append_char(buf, ']') && append_color_end(buf, options);
 }
 
-static bool append_duration(struct nbsp_buf *buf, unsigned long duration_ms) {
+static bool append_duration(struct nbsp_buf *buf,
+    unsigned long duration_ms,
+    unsigned options) {
     char text[64];
     if (duration_ms < 1000UL) {
         (void) snprintf(text, sizeof text, "[%lums]", duration_ms);
@@ -130,20 +142,29 @@ static bool append_duration(struct nbsp_buf *buf, unsigned long duration_ms) {
             total_seconds / 60UL,
             total_seconds % 60UL);
     }
-    return append_colored(buf, "yellow", text);
+    return append_colored(buf, "yellow", text, options);
 }
 
-static bool append_prompt_character(struct nbsp_buf *buf, int status) {
-    if (status == 0) {
-        return nbsp_buf_append(buf, "%#");
+static bool append_prompt_character(struct nbsp_buf *buf,
+    int status,
+    unsigned options) {
+    if ((options & NBSP_PROMPT_PERCENT) != 0U) {
+        if (status == 0) {
+            return nbsp_buf_append(buf, "%#");
+        }
+        return nbsp_buf_appendf(buf, "%%F{red}e%d%%#%%f", status);
     }
-    return nbsp_buf_appendf(buf, "%%F{red}e%d%%#%%f", status);
+
+    char prompt_character = geteuid() == 0 ? '#' : '%';
+    return (status == 0 || nbsp_buf_appendf(buf, "e%d", status)) &&
+        nbsp_buf_append_char(buf, prompt_character);
 }
 
 char *nbsp_prompt_render(const char *cwd,
     int last_status,
     unsigned long duration_ms,
-    unsigned jobs) {
+    unsigned jobs,
+    unsigned prompt_options) {
     struct nbsp_prompt_data data;
     if (!nbsp_prompt_data_collect(cwd, last_status, duration_ms, jobs, &data)) {
         return NULL;
@@ -151,27 +172,31 @@ char *nbsp_prompt_render(const char *cwd,
 
     struct nbsp_buf prompt;
     nbsp_buf_init(&prompt);
-    bool ok = append_colored(&prompt, "default", data.path);
+    bool ok = append_colored(&prompt, "default", data.path, prompt_options);
 
     if (ok && data.git_present && data.git_branch[0] != '\0') {
-        ok = nbsp_buf_append_char(&prompt, ' ') && append_git(&prompt, &data);
+        ok = nbsp_buf_append_char(&prompt, ' ') &&
+            append_git(&prompt, &data, prompt_options);
     }
     if (ok && data.node_version[0] != '\0') {
         char text[320];
         (void) snprintf(text, sizeof text, "[node:%s]", data.node_version);
-        ok = nbsp_buf_append_char(&prompt, ' ') && append_colored(&prompt, "green", text);
+        ok = nbsp_buf_append_char(&prompt, ' ') &&
+            append_colored(&prompt, "green", text, prompt_options);
     }
     if (ok && data.duration_ms >= NBSP_DURATION_THRESHOLD_MS) {
-        ok = nbsp_buf_append_char(&prompt, ' ') && append_duration(&prompt, data.duration_ms);
+        ok = nbsp_buf_append_char(&prompt, ' ') &&
+            append_duration(&prompt, data.duration_ms, prompt_options);
     }
     if (ok && data.jobs > 0U) {
         char text[64];
         (void) snprintf(text, sizeof text, "[jobs:%u]", data.jobs);
-        ok = nbsp_buf_append_char(&prompt, ' ') && append_colored(&prompt, "yellow", text);
+        ok = nbsp_buf_append_char(&prompt, ' ') &&
+            append_colored(&prompt, "yellow", text, prompt_options);
     }
     if (ok) {
         ok = nbsp_buf_append_char(&prompt, ' ') &&
-            append_prompt_character(&prompt, data.status) &&
+            append_prompt_character(&prompt, data.status, prompt_options) &&
             nbsp_buf_append_char(&prompt, ' ');
     }
     if (!ok) {

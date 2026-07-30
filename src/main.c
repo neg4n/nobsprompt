@@ -28,7 +28,8 @@ static void print_usage(FILE *out) {
     fputs(
         "Usage:\n"
         "  nbsp init zsh [--detached] [--autosuggest]\n"
-        "  nbsp prompt [--status N] [--duration-ms N] [--jobs N]\n"
+        "  nbsp prompt [--status N] [--duration-ms N] [--jobs N]"
+            " [--prompt-options LIST]\n"
         "  nbsp data [--status N] [--duration-ms N] [--jobs N]"
             " [--format lines|nul]\n"
         "  nbsp refresh [--cwd PATH] [--notify] [--force]\n"
@@ -50,15 +51,50 @@ static void print_help(void) {
         stdout);
 }
 
+static bool parse_prompt_options(const char *text, unsigned *out) {
+    if (!text || !out) return false;
+    if (strcmp(text, "none") == 0) {
+        *out = 0U;
+        return true;
+    }
+    if (*text == '\0') return false;
+
+    unsigned parsed = 0U;
+    const char *cursor = text;
+    while (*cursor) {
+        const char *comma = strchr(cursor, ',');
+        size_t length = comma ? (size_t) (comma - cursor) : strlen(cursor);
+        unsigned flag = 0U;
+        if (length == 7U && memcmp(cursor, "percent", length) == 0) {
+            flag = NBSP_PROMPT_PERCENT;
+        } else if (length == 5U && memcmp(cursor, "subst", length) == 0) {
+            flag = NBSP_PROMPT_SUBST;
+        } else if (length == 4U && memcmp(cursor, "bang", length) == 0) {
+            flag = NBSP_PROMPT_BANG;
+        } else {
+            return false;
+        }
+        if ((parsed & flag) != 0U) return false;
+        parsed |= flag;
+        if (!comma) break;
+        cursor = comma + 1;
+        if (*cursor == '\0') return false;
+    }
+    *out = parsed;
+    return true;
+}
+
 static int command_prompt(int argc, char **argv) {
     int last_status = 0;
     unsigned long duration_ms = 0UL;
     unsigned jobs = 0U;
-    enum { OPT_STATUS = 1, OPT_DURATION, OPT_JOBS };
+    unsigned prompt_options = NBSP_PROMPT_PERCENT;
+    enum { OPT_STATUS = 1, OPT_DURATION, OPT_JOBS, OPT_PROMPT_OPTIONS };
     static const struct option options[] = {
         {"status", required_argument, NULL, OPT_STATUS},
         {"duration-ms", required_argument, NULL, OPT_DURATION},
         {"jobs", required_argument, NULL, OPT_JOBS},
+        {"prompt-options", required_argument, NULL, OPT_PROMPT_OPTIONS},
         {0, 0, 0, 0}
     };
     optind = 1;
@@ -78,6 +114,9 @@ static int command_prompt(int argc, char **argv) {
                 if (!nbsp_parse_long(optarg, 0, INT_MAX, &parsed)) return 2;
                 jobs = (unsigned) parsed;
                 break;
+            case OPT_PROMPT_OPTIONS:
+                if (!parse_prompt_options(optarg, &prompt_options)) return 2;
+                break;
             default:
                 return 2;
         }
@@ -90,7 +129,8 @@ static int command_prompt(int argc, char **argv) {
     if (!getcwd(cwd, sizeof cwd)) {
         (void) snprintf(cwd, sizeof cwd, "?");
     }
-    char *prompt = nbsp_prompt_render(cwd, last_status, duration_ms, jobs);
+    char *prompt = nbsp_prompt_render(
+        cwd, last_status, duration_ms, jobs, prompt_options);
     if (!prompt) {
         fputs("> ", stdout);
         return 0;

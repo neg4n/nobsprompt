@@ -7,7 +7,7 @@ description: Reference every nbsp command and option, including prompt metadata,
 
 ```text
 nbsp init zsh [--detached] [--autosuggest]
-nbsp prompt [--status N] [--duration-ms N] [--jobs N]
+nbsp prompt [--status N] [--duration-ms N] [--jobs N] [--prompt-options LIST]
 nbsp data [--status N] [--duration-ms N] [--jobs N] [--format lines|nul]
 nbsp refresh [--cwd PATH] [--notify] [--force]
 nbsp dirs [--cwd PATH] [--format nul]
@@ -33,7 +33,7 @@ eval "$(nbsp init zsh --detached)"
 
 `--detached` installs the same data and redraw lifecycle without modifying
 `PROMPT` or `RPROMPT`. It publishes `NBSP_DATA`,
-`nbsp_data_update_functions`, and `nbsp_prompt_escape`.
+`nbsp_data_update_functions`, and `nbsp_prompt_quote`.
 
 `--autosuggest` is independent of prompt mode. It adds ordinary history ghost
 text and bounded, live path-aware `cd` suggestions described in
@@ -54,6 +54,13 @@ nbsp prompt --status 1 --duration-ms 2400 --jobs 2
 | `--status N` | Previous command's exact exit status |
 | `--duration-ms N` | Previous command duration in milliseconds |
 | `--jobs N` | Background job count |
+| `--prompt-options LIST` | `none` or a unique comma-separated subset of `percent`, `subst`, and `bang` |
+
+The default is `percent`. The bundled Zsh integration supplies the current
+`PROMPT_PERCENT`, `PROMPT_SUBST`, and `PROMPT_BANG` state automatically. A
+direct caller must pass matching values for the prompt options that will be in
+effect when Zsh displays the result. With `percent` absent, the renderer emits
+a plain, uncolored prompt instead of percent escapes.
 
 The command never starts Git or Node.
 See [Opinionated prompt](/get-started/opinionated-prompt) for the fixed layout,

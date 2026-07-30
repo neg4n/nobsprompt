@@ -35,7 +35,8 @@ bool nbsp_prompt_data_collect(const char *cwd,
 char *nbsp_prompt_render(const char *cwd,
     int last_status,
     unsigned long duration_ms,
-    unsigned jobs);
+    unsigned jobs,
+    unsigned prompt_options);
 int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify, bool force);
 
 #endif /* NBSP_PROMPT_H */

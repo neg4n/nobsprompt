@@ -23,6 +23,10 @@ nbsp \- a lightweight prompt backend and opinionated Zsh prompt
 .B --jobs
 .I N
 ]
+[
+.B --prompt-options
+.I LIST
+]
 .br
 .B nbsp data
 [
@@ -83,6 +87,14 @@ directory, Git status, active NVM version, command duration, background job
 count, and exact nonzero exit status. Failures appear as a compact red status
 joined to the prompt character, such as e1% or e127%. Its presentation is
 intentionally fixed.
+.PP
+The Zsh integration tells the renderer whether
+.BR PROMPT_PERCENT ,
+.BR PROMPT_SUBST ,
+and
+.B PROMPT_BANG
+are active. Dynamic fields are quoted for that exact state. If percent prompt
+expansion is disabled, the built-in renderer emits a plain, uncolored prompt.
 .PP
 The foreground renderer never executes Git. It reads the branch directly from
 the repository metadata and consumes a small cached status snapshot. A
@@ -175,8 +187,13 @@ The detached Zsh integration publishes a global associative array named
 after each precmd and asynchronous refresh. It also exposes
 .B nbsp_data_update_functions
 for custom redraw callbacks and
-.B nbsp_prompt_escape
-for safely embedding dynamic text in Zsh prompts.
+.B nbsp_prompt_quote
+for quoting dynamic text for the current
+.BR PROMPT_PERCENT ,
+.BR PROMPT_SUBST ,
+and
+.B PROMPT_BANG
+settings without changing those options.
 .PP
 The complete schema, lifecycle, safe parsing rules, and custom prompt examples
 are

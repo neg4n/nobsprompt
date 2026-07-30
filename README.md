@@ -98,6 +98,10 @@ are deliberately fixed. See the
 [opinionated prompt guide](https://nobsprompt.pages.dev/get-started/opinionated-prompt)
 for its complete behavior.
 
+The integration adapts quoting to the current `PROMPT_PERCENT`, `PROMPT_SUBST`,
+and `PROMPT_BANG` settings without changing them. If `PROMPT_PERCENT` is off,
+it emits the same information as plain, uncolored text.
+
 ### Detached mode
 
 Detached mode installs the same timing, job tracking, asynchronous refresh,
@@ -117,7 +121,9 @@ print -r -- "${NBSP_DATA[node_version]}"
 ```
 
 Register a callback to rebuild your prompt whenever fresh data arrives. Use
-`nbsp_prompt_escape` before inserting dynamic values into Zsh prompt strings.
+`nbsp_prompt_quote` before inserting dynamic values into Zsh prompt strings;
+it quotes for the current `PROMPT_PERCENT`, `PROMPT_SUBST`, and `PROMPT_BANG`
+settings without changing those options.
 
 The [detached mode guide](https://nobsprompt.pages.dev/detached-mode) includes
 the complete schema and lifecycle, safe parsing rules, and practical layouts

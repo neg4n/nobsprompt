@@ -23,17 +23,48 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
     typeset -ga nbsp_data_update_functions
   fi
 
-  nbsp_prompt_escape() {
-    REPLY=${1//[[:cntrl:]]/?}
-    REPLY=${REPLY//\%/%%}
+  nbsp_prompt_quote() {
+    local LC_ALL=C input=${1-} char hex
+    local -i index repetitions repeat substitute=0
+    [[ -o promptsubst ]] && substitute=1
+    if (( substitute )); then
+      REPLY='${(g::):-'
+    else
+      REPLY=
+    fi
+    for (( index = 1; index <= ${#input}; index++ )); do
+      char=$input[index]
+      [[ $char == [[:cntrl:]] ]] && char='?'
+      repetitions=1
+      if [[ $char == \! && -o promptbang ]] ||
+          [[ $char == % && -o promptpercent ]]; then
+        repetitions=2
+      fi
+      for (( repeat = 0; repeat < repetitions; repeat++ )); do
+        if (( substitute )); then
+          printf -v hex '%02X' "'$char"
+          REPLY+="\\x$hex"
+        else
+          REPLY+=$char
+        fi
+      done
+    done
+    (( substitute )) && REPLY+='}'
   }
 
   _nbsp_render() {
-    local rendered old pattern kept_prefix kept_suffix
+    local rendered old pattern kept_prefix kept_suffix prompt_option_list
+    local -a prompt_options
+    [[ -o promptpercent ]] && prompt_options+=(percent)
+    [[ -o promptsubst ]] && prompt_options+=(subst)
+    [[ -o promptbang ]] && prompt_options+=(bang)
+    prompt_option_list=${(j:,:)prompt_options}
+    [[ -n $prompt_option_list ]] || prompt_option_list=none
     rendered=$(command nbsp prompt \
       --status "$_nbsp_last_status" \
       --duration-ms "$_nbsp_last_duration_ms" \
-      --jobs "$_nbsp_last_jobs")
+      --jobs "$_nbsp_last_jobs" \
+      --prompt-options "$prompt_option_list")
     if [[ $? != 0 || -z $rendered ]]; then
       rendered='> '
     fi
