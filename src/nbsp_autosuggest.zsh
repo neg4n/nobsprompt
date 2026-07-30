@@ -1,10 +1,10 @@
 if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
-  typeset -g _NBSP_AUTOSUGGEST_INITIALIZED=1
   zmodload zsh/parameter
 
   if (( $+functions[_zsh_autosuggest_start] || $+widgets[autosuggest-accept] )); then
     print -ru2 -- 'nbsp: --autosuggest disabled because another autosuggestion plugin is active; use only one engine or remove --autosuggest'
   else
+    typeset -g _NBSP_AUTOSUGGEST_INITIALIZED=1
     autoload -Uz add-zle-hook-widget is-at-least
     zmodload zsh/system 2>/dev/null
     zmodload zsh/terminfo 2>/dev/null
@@ -118,7 +118,10 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
     }
 
     _nbsp_as_scan_done() {
+      local -i caller_posix_cd=0
+      [[ -o posixcd ]] && caller_posix_cd=1
       emulate -L zsh
+      (( caller_posix_cd )) && setopt posixcd
       local -i fd=$1 invalid=0
       local event=${2-} key value
       while true; do
@@ -246,12 +249,12 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
         if [[ $state == single ]]; then
           [[ $character == "'" ]] && state=plain
         elif [[ $state == double ]]; then
-          if [[ $character == '\\' ]]; then
+          if [[ $character == $'\\' ]]; then
             escaped=1
           elif [[ $character == '"' ]]; then
             state=plain
           fi
-        elif [[ $character == '\\' ]]; then
+        elif [[ $character == $'\\' ]]; then
           escaped=1
         elif [[ $character == "'" ]]; then
           state=single
@@ -262,7 +265,31 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       [[ $state == plain && escaped -eq 0 ]]
     }
 
+    _nbsp_as_pwd_is_first_cd_root() {
+      emulate -L zsh
+      local -i posix_cd=$1
+      local component
+
+      (( ! ${+cdpath} || $#cdpath == 0 )) && return 0
+      if (( posix_cd )); then
+        [[ -z ${cdpath[1]} || ${cdpath[1]} == . ]]
+        return
+      fi
+      for component in "${(@)cdpath}"; do
+        if [[ -z $component || $component == . ]]; then
+          [[ -z ${cdpath[1]} || ${cdpath[1]} == . ]]
+          return
+        fi
+      done
+      return 0
+    }
+
     _nbsp_as_parse_cd() {
+      local -i caller_posix_cd=${2:--1}
+      if (( caller_posix_cd < 0 )); then
+        caller_posix_cd=0
+        [[ -o posixcd ]] && caller_posix_cd=1
+      fi
       emulate -L zsh
       local line=$1 raw_path path parent relative
       local -a words
@@ -273,6 +300,7 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
         reply=( "$PWD" '' )
         return 0
       fi
+      _nbsp_as_static_quotes_complete "$line" || return 1
       words=( ${(z)line} ) 2>/dev/null || return 1
       if (( $#words == 2 )) && [[ ${(Q)words[1]} == cd ]]; then
         raw_path=$words[2]
@@ -286,7 +314,7 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       [[ -n $raw_path ]] || return 1
       case $raw_path in
         *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*']'*|*'{'*|*'}'*|*'('*|*')'*|\
-        *'<'*|*'>'*|*'|'*|*'&'*|*';'*) return 1 ;;
+        *'<'*|*'>'*|*'|'*|*'&'*|*';'*|*'^'*|*'#'*) return 1 ;;
       esac
 
       _nbsp_as_static_quotes_complete "$raw_path" || return 1
@@ -299,11 +327,11 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       elif [[ $raw_path == '~'* ]]; then
         return 1
       fi
+      if (( ! expand_home )) && [[ $path != /* ]]; then
+        _nbsp_as_pwd_is_first_cd_root "$caller_posix_cd" || return 1
+      fi
 
       if [[ $path != */* ]]; then
-        if (( ${+cdpath} && $#cdpath > 0 )); then
-          return 1
-        fi
         if (( expand_home )); then
           reply=( "$HOME" '' )
         else
@@ -332,14 +360,14 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
 
     _nbsp_as_rank_directory() {
       local root=$1 prefix=$2
-      local -i first=$3 last=$4 low high middle
+      local -i first=$3 last=$4 caller_posix_cd=$5 low high middle
       local historical candidate
       local -a parsed reply
       local LC_ALL=C
       for historical in "${(@)_nbsp_as_history}"; do
         [[ $historical == "$BUFFER"* ]] || continue
         reply=()
-        _nbsp_as_parse_cd "$historical" || continue
+        _nbsp_as_parse_cd "$historical" "$caller_posix_cd" || continue
         parsed=( "${(@)reply}" )
         [[ ${parsed[1]-} == $root && ${parsed[2]-} == "$prefix"* ]] || continue
         candidate=${parsed[2]}
@@ -363,7 +391,7 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
     _nbsp_as_directory_full() {
       local root=$1 prefix=$2 candidate remainder escaped
       local LC_ALL=C
-      local -i low=1 high=$#_nbsp_as_dirs middle first last
+      local -i caller_posix_cd=$3 low=1 high=$#_nbsp_as_dirs middle first last
       [[ -n $root && -n $prefix ]] || return 1
 
       if [[ $_nbsp_as_scan_root != $root || $_nbsp_as_scan_pwd != $PWD ||
@@ -390,7 +418,8 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       if (( first == last )); then
         candidate=${_nbsp_as_dirs[first]}
       else
-        _nbsp_as_rank_directory "$root" "$prefix" "$first" "$last" || return 1
+        _nbsp_as_rank_directory "$root" "$prefix" "$first" "$last" \
+          "$caller_posix_cd" || return 1
         candidate=$REPLY
       fi
       remainder=${candidate[$(( $#prefix + 1 )),-1]}
@@ -400,6 +429,8 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
     }
 
     _nbsp_as_pre_redraw() {
+      local -i caller_posix_cd=0
+      [[ -o posixcd ]] && caller_posix_cd=1
       emulate -L zsh
       setopt EXTENDED_GLOB
       _nbsp_as_clear_display
@@ -415,11 +446,12 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       (( !_nbsp_as_disabled && $#BUFFER > 0 && $#BUFFER <= 256 &&
           CURSOR == $#BUFFER && !REGION_ACTIVE )) || return
       [[ $BUFFER != *$'\n'* && $BUFFER != [[:space:]]* ]] || return
+      (( PENDING == 0 && ${KEYS_QUEUED_COUNT:-0} == 0 )) || return
 
       local -a parsed reply
       local -i path_mode=0
       reply=()
-      if _nbsp_as_parse_cd "$BUFFER"; then
+      if _nbsp_as_parse_cd "$BUFFER" "$caller_posix_cd"; then
         parsed=( "${(@)reply}" )
         path_mode=1
       fi
@@ -432,10 +464,10 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
       fi
       _nbsp_as_full=
       _nbsp_as_full_kind=
-      (( PENDING == 0 && ${KEYS_QUEUED_COUNT:-0} == 0 )) || return
 
       if (( path_mode )); then
-        if _nbsp_as_directory_full "${parsed[1]}" "${parsed[2]}"; then
+        if _nbsp_as_directory_full "${parsed[1]}" "${parsed[2]}" \
+            "$caller_posix_cd"; then
           _nbsp_as_offer "$REPLY" directory
         fi
         return

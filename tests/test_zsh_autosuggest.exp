@@ -51,14 +51,79 @@ proc expect_re {pattern} {
     }
 }
 
-spawn env HOME=$home PATH=$bindir:$original_path TERM=xterm-256color NBSP_CACHE_DIR=$tmp/cache NBSP_TEST_NO_MEMO=$no_memo zsh -dfi
+# An early conflict skips initialization without poisoning a later re-source.
+spawn env HOME=$home PATH=$bindir:$original_path TERM=xterm-256color NBSP_CACHE_DIR=$tmp/cache zsh -dfi
 wait_prompt
-send -- {HISTSIZE=12; zmodload zsh/terminfo; _custom_right() { :; }; zle -N _custom_right; bindkey -M viins "${terminfo[kcuf1]}" _custom_right; eval "$(nbsp init zsh --autosuggest)"; (( NBSP_TEST_NO_MEMO )) && _nbsp_as_highlight_memo=0; bindkey -e; print -s -- "filler"; print -s -- "git status --short"; print -s -- "cd source --history"; print -s -- "cd ~/Desktop/programming/workspace"; print -s -- "cd ~/Desktop/programming/work"; print -s -- "cd ~/Desktop/programming/zombie"; print -s -- "clear"; _as_report() { print -ru2 -- "REPORT:${BUFFER}::${POSTDISPLAY}::${_nbsp_as_scan_state}::${#_nbsp_as_dirs}"; }; _as_cursor() { print -ru2 -- "CURSOR:${CURSOR}::${#BUFFER}"; }; _as_highlights() { print -ru2 -- "HIGHLIGHTS:${#region_highlight}::${(j:|:)region_highlight}::${_nbsp_as_highlight}"; }; _as_add_foreign_highlight() { region_highlight+=( "0 1 bold" ); }; _as_clear_highlights() { region_highlight=(); }; _as_foreign() { POSTDISPLAY=FOREIGN; }; _as_foreign_clear() { POSTDISPLAY=; }; zle -N _as_report; zle -N _as_cursor; zle -N _as_highlights; zle -N _as_add_foreign_highlight; zle -N _as_clear_highlights; zle -N _as_foreign; zle -N _as_foreign_clear; bindkey '^X^R' _as_report; bindkey '^X^P' _as_cursor; bindkey -M viins '^X^R' _as_report; bindkey -M viins '^X^P' _as_cursor; bindkey '^Xh' _as_highlights; bindkey '^Xg' _as_add_foreign_highlight; bindkey '^Xk' _as_clear_highlights; bindkey '^Xf' _as_foreign; bindkey '^Xc' _as_foreign_clear; print -r -- "VI-RIGHT:$(bindkey -M viins "${terminfo[kcuf1]}")"; print -r -- "VI-CSI:$(bindkey -M viins $'\e[C')"; print -r -- "TAB-EMACS:$(bindkey -M emacs '^I')"; print -r -- "TAB-VIINS:$(bindkey -M viins '^I')"}
+send -- {_zsh_autosuggest_start() { :; }; eval "$(nbsp init zsh --autosuggest)"; print -r -- "EARLY-CONFLICT:${+_NBSP_AUTOSUGGEST_INITIALIZED}:${+widgets[nbsp-autosuggest-accept]}"}
+send -- "\r"
+expect_re {nbsp: --autosuggest disabled because another autosuggestion plugin is active; use only one engine or remove --autosuggest\r?\n}
+expect_re {EARLY-CONFLICT:0:0\r?\n}
+wait_prompt
+send -- {unfunction _zsh_autosuggest_start; eval "$(nbsp init zsh --autosuggest)"; _as_hooks_before=${#precmd_functions}; eval "$(nbsp init zsh --autosuggest)"; _as_hooks_after=${#precmd_functions}; print -r -- "RECOVERED:${+_NBSP_AUTOSUGGEST_INITIALIZED}:${+widgets[nbsp-autosuggest-accept]}:${_as_hooks_before}:${_as_hooks_after}"}
+send -- "\r"
+set recovered [expect_re {RECOVERED:1:1:[0-9]+:[0-9]+\r?\n}]
+if {![regexp {RECOVERED:1:1:([0-9]+):([0-9]+)} $recovered -> hooks_before hooks_after] || $hooks_before != $hooks_after} {
+    puts stderr "re-sourcing autosuggestions duplicated prompt hooks"
+    exit 1
+}
+wait_prompt
+send -- "exit\r"
+expect eof
+wait
+
+spawn env HOME=$home PATH=$bindir:$original_path TERM=xterm-256color NBSP_CACHE_DIR=$tmp/cache NBSP_PARSE_MARKER=$tmp/parse-marker NBSP_TEST_NO_MEMO=$no_memo zsh -dfi
+wait_prompt
+send -- {HISTSIZE=12; cdpath=(); unsetopt posixcd; zmodload zsh/terminfo; _custom_right() { :; }; zle -N _custom_right; bindkey -M viins "${terminfo[kcuf1]}" _custom_right; eval "$(nbsp init zsh --autosuggest)"; (( NBSP_TEST_NO_MEMO )) && _nbsp_as_highlight_memo=0; bindkey -e; print -s -- "filler"; print -s -- "git status --short"; print -s -- "cd source --history"; print -s -- "cd ~/Desktop/programming/workspace"; print -s -- "cd ~/Desktop/programming/work"; print -s -- "cd ~/Desktop/programming/zombie"; print -s -- "clear"; _as_report() { _nbsp_as_pre_redraw; print -ru2 -- "REPORT:${BUFFER}::${POSTDISPLAY}::${_nbsp_as_scan_state}::${#_nbsp_as_dirs}"; }; _as_cursor() { print -ru2 -- "CURSOR:${CURSOR}::${#BUFFER}"; }; _as_highlights() { print -ru2 -- "HIGHLIGHTS:${#region_highlight}::${(j:|:)region_highlight}::${_nbsp_as_highlight}"; }; _as_add_foreign_highlight() { region_highlight+=( "0 1 bold" ); }; _as_clear_highlights() { region_highlight=(); }; _as_foreign() { POSTDISPLAY=FOREIGN; }; _as_foreign_clear() { POSTDISPLAY=; }; _as_queue_probe() { _nbsp_as_clear_display; BUFFER=c; CURSOR=1; _nbsp_as_full=clear; _nbsp_as_full_kind=history; zle -U x; _nbsp_as_pre_redraw; print -ru2 -- "QUEUED:${BUFFER}::${POSTDISPLAY}"; }; zle -N _as_report; zle -N _as_cursor; zle -N _as_highlights; zle -N _as_add_foreign_highlight; zle -N _as_clear_highlights; zle -N _as_foreign; zle -N _as_foreign_clear; zle -N _as_queue_probe; bindkey '^X^R' _as_report; bindkey '^]' _as_report; bindkey '^X^P' _as_cursor; bindkey -M viins '^X^R' _as_report; bindkey -M viins '^]' _as_report; bindkey -M viins '^X^P' _as_cursor; bindkey '^Xh' _as_highlights; bindkey '^Xg' _as_add_foreign_highlight; bindkey '^Xk' _as_clear_highlights; bindkey '^Xf' _as_foreign; bindkey '^Xc' _as_foreign_clear; bindkey '^Xq' _as_queue_probe; print -r -- "VI-RIGHT:$(bindkey -M viins "${terminfo[kcuf1]}")"; print -r -- "VI-CSI:$(bindkey -M viins $'\e[C')"; print -r -- "TAB-EMACS:$(bindkey -M emacs '^I')"; print -r -- "TAB-VIINS:$(bindkey -M viins '^I')"}
 send -- "\r"
 expect_re {VI-RIGHT:.* _custom_right\r?\n}
 expect_re {VI-CSI:.* _nbsp-as-v\r?\n}
 expect_re {TAB-EMACS:.* expand-or-complete\r?\n}
 expect_re {TAB-VIINS:.* expand-or-complete\r?\n}
+wait_prompt
+
+# Static cd parsing accepts only closed quote/backslash forms and never evaluates.
+send -- {_as_parse_status() { local label=$1 line=$2; local -a reply; if _nbsp_as_parse_cd "$line"; then print -r -- "PARSE:${label}:OK"; else print -r -- "PARSE:${label}:NO"; fi; }}
+send -- "\r"
+wait_prompt
+send -- {_as_parse_status closed-double 'cd "space dir"/n'; _as_parse_status closed-single "cd 'space dir'/n"; _as_parse_status escaped-space 'cd space\ dir/n'; _as_parse_status escaped-backslash 'cd foo\\bar'; _as_parse_status unclosed-double 'cd "foo'; _as_parse_status unclosed-single "cd 'foo"}
+send -- "\r"
+foreach label {closed-double closed-single escaped-space escaped-backslash} {
+    expect_re "PARSE:${label}:OK\\r?\\n"
+}
+foreach label {unclosed-double unclosed-single} {
+    expect_re "PARSE:${label}:NO\\r?\\n"
+}
+wait_prompt
+send -- {_as_parse_status trailing-backslash $'cd foo\\'}
+send -- "\r"
+expect_re {PARSE:trailing-backslash:NO\r?\n}
+wait_prompt
+send -- {_as_parse_status caret 'cd foo^bar'; _as_parse_status hash 'cd foo#bar'; _as_parse_status quoted-caret 'cd "foo^bar"'; _as_parse_status quoted-hash 'cd "foo#bar"'; _as_parse_status escaped-caret 'cd foo\^bar'; _as_parse_status escaped-hash 'cd foo\#bar'; _as_parse_status command-substitution 'cd $(touch "$NBSP_PARSE_MARKER")'; _as_parse_status backticks 'cd `touch "$NBSP_PARSE_MARKER"`'; if [[ -e $NBSP_PARSE_MARKER ]]; then print -r -- EVAL-MARKER:DIRTY; else print -r -- EVAL-MARKER:CLEAN; fi}
+send -- "\r"
+foreach label {caret hash quoted-caret quoted-hash escaped-caret escaped-hash command-substitution backticks} {
+    expect_re "PARSE:${label}:NO\\r?\\n"
+}
+expect_re {EVAL-MARKER:CLEAN\r?\n}
+wait_prompt
+
+# PWD is scanned only when it is guaranteed to be the first cd search root.
+send -- {unsetopt posixcd; cdpath=( "$HOME/other" ); _as_parse_status default-no-dot 'cd sou'; cdpath=( . "$HOME/other" ); _as_parse_status default-dot-first 'cd sou'; cdpath=( '' "$HOME/other" ); _as_parse_status default-empty-first 'cd sou'; cdpath=( "$HOME/other" . ); _as_parse_status default-other-before-dot 'cd sou'; cdpath=( "$HOME/other" '' ); _as_parse_status default-other-before-empty 'cd sou'; setopt posixcd; cdpath=( "$HOME/other" ); _as_parse_status posix-no-dot 'cd sou'; cdpath=( . "$HOME/other" ); _as_parse_status posix-dot-first 'cd sou'; cdpath=( '' "$HOME/other" ); _as_parse_status posix-empty-first 'cd sou'; cdpath=( "$HOME/other" . ); _as_parse_status posix-other-before-dot 'cd sou'; _as_parse_status posix-absolute 'cd /tmp/sou'; _as_parse_status posix-tilde 'cd ~/Desktop'; cdpath=(); unsetopt posixcd}
+send -- "\r"
+foreach expected {
+    default-no-dot:OK
+    default-dot-first:OK
+    default-empty-first:OK
+    default-other-before-dot:NO
+    default-other-before-empty:NO
+    posix-no-dot:NO
+    posix-dot-first:OK
+    posix-empty-first:OK
+    posix-other-before-dot:NO
+    posix-absolute:OK
+    posix-tilde:OK
+} {
+    expect_re "PARSE:${expected}\\r?\\n"
+}
 wait_prompt
 
 # Vi insert mode accepts an owned suggestion and otherwise keeps native movement.
@@ -68,7 +133,7 @@ send -- "cl"
 after 100
 send -- "\033\[C"
 after 50
-send -- "\030\022"
+send -- "\035"
 set vi_accept [expect_re {REPORT:clear::::empty::0\r?\n}]
 if {[string first "\a" $vi_accept] >= 0} {
     puts stderr "Vi insert Right Arrow acceptance rang the terminal bell"
@@ -87,11 +152,13 @@ send -- "c"
 after 100
 send -- "l"
 after 100
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cl::ear::empty::0\r?\n}
+send -- "\025cl"
+after 100
 send -- "\033\[C"
 after 50
-send -- "\030\022"
+send -- "\035"
 set incremental_accept [expect_re {REPORT:clear::::empty::0\r?\n}]
 if {[string first "\a" $incremental_accept] >= 0} {
     puts stderr "incremental history acceptance rang the terminal bell"
@@ -99,85 +166,97 @@ if {[string first "\a" $incremental_accept] >= 0} {
 }
 send -- "\025"
 
+# Queued input suppresses cached suggestions as well as fresh computation.
+send -- "\030q"
+expect_re {QUEUED:c::\r?\n}
+after 50
+send -- "\025"
+
 # Most-recent exact history prefix wins without starting a directory scan.
 send -- "git s"
 after 100
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:git s::tatus --short::empty::0\r?\n}
 
 # A live directory wins over a complex or stale history command.
 send -- "\025cd sou"
 after 300
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd sou::.*::(loading::0|ready::4)\r?\n}
 after 100
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd sou::.*::ready::4\r?\n}
 after 50
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd sou::rce/::ready::4\r?\n}
 
 # A nested tilde path never resurrects a missing directory from history.
 send -- "\025cd ~/Desktop/programming/w"
 after 300
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd ~/Desktop/programming/w::.*::(loading::0|ready::1)\r?\n}
 after 100
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd ~/Desktop/programming/w::.*::ready::1\r?\n}
 after 50
-send -- "\030\022"
+send -- "\035"
+expect_re {REPORT:cd ~/Desktop/programming/w::eb/::ready::1\r?\n}
+
+# A ready directory list is a point-in-time snapshot until prompt invalidation.
+file mkdir [file join $home Desktop programming workspace]
+send -- "\035"
 expect_re {REPORT:cd ~/Desktop/programming/w::eb/::ready::1\r?\n}
 
 # A stale history result is skipped even when a live sibling makes it ambiguous.
-file mkdir [file join $home Desktop programming workspace]
 send -- "\025:"
 send -- "\r"
 wait_prompt
 send -- "cd ~/Desktop/programming/w"
 after 300
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd ~/Desktop/programming/w::.*::(loading::0|ready::2)\r?\n}
 after 100
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd ~/Desktop/programming/w::.*::ready::2\r?\n}
 after 50
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd ~/Desktop/programming/w::orkspace/::ready::2\r?\n}
 
 # No live match means no directory ghost, regardless of stale history.
 send -- "\025cd ~/Desktop/programming/z"
 after 100
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd ~/Desktop/programming/z::::ready::2\r?\n}
 
 # Quoted parent components are decoded only for the worker path.
 send -- "\025cd \"space dir\"/n"
 after 300
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd "space dir"/n::.*::(loading::0|ready::1)\r?\n}
 after 100
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd "space dir"/n::.*::ready::1\r?\n}
 after 50
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd "space dir"/n::ested/::ready::1\r?\n}
 
 # A history miss lazily scans once and offers the unique, shell-escaped directory.
 send -- "\025cd spa"
 after 300
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd spa::.*::ready::4\r?\n}
 after 50
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd spa::ce.*dir/::ready::4\r?\n}
 
 # Right Arrow accepts the owned suffix and leaves no ghost text behind.
+send -- "\025cd spa"
+after 100
 send -- "\030g"
 after 50
 send -- "\033\[C"
 after 50
-send -- "\030\022"
+send -- "\035"
 set accepted_display [expect_re {REPORT:cd space.*dir/::::ready::4\r?\n}]
 if {![regexp {\x1b\[39m/REPORT:cd space} $accepted_display]} {
     puts stderr "accepted suffix was not repainted with the default foreground"
@@ -190,14 +269,14 @@ send -- "\030k"
 # Ambiguous directory prefixes are left to ordinary Tab completion.
 send -- "\025cd al"
 after 50
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:cd al::::ready::4\r?\n}
 
 # Foreign POSTDISPLAY content is never replaced or cleared.
 send -- "\025"
 send -- "\030f"
 after 50
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:::FOREIGN::ready::4\r?\n}
 send -- "\030c"
 after 50
@@ -207,7 +286,7 @@ send -- "\025git s"
 after 50
 send -- "\033OD"
 after 50
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:git s::::ready::4\r?\n}
 
 # A full HISTSIZE ring still publishes the newest command incrementally.
@@ -219,10 +298,7 @@ send -- "\r"
 after 200
 send -- ": fresh"
 after 50
-send -- "\030\022"
-expect_re {REPORT:: fresh::::empty::0\r?\n}
-after 50
-send -- "\030\022"
+send -- "\035"
 expect_re {REPORT:: fresh::.*history-value::empty::0\r?\n}
 
 # A plugin loaded later disables nbsp before the next prompt and warns once.
