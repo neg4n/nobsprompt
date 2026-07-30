@@ -82,7 +82,9 @@ Cache location precedence is:
 2. `$XDG_CACHE_HOME/nbsp`;
 3. `~/Library/Caches/nbsp`.
 
-`nbsp cache clear` removes cache and lock files owned by `nbsp`.
+`nbsp cache clear` removes cache snapshots and abandoned temporary snapshots.
+It preserves persistent per-repository lock files so a concurrent refresh
+cannot begin using a different lock inode.
 
 ## Redraw and terminal output
 

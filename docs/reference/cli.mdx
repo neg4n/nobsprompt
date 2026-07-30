@@ -100,11 +100,14 @@ not bypass locking, timeout, validation, or atomic cache publication.
 
 ## `cache clear`
 
-Remove cache and lock files owned by `nbsp`:
+Remove cache snapshots and abandoned temporary snapshots owned by `nbsp`:
 
 ```sh
 nbsp cache clear
 ```
+
+Persistent per-repository lock files remain in place so concurrent refreshes
+continue to synchronize on the same inode.
 
 ## `dirs`
 

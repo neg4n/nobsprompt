@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "nbsp_cache.h"
 #include "nbsp_git.h"
 #include "nbsp_prompt.h"
 #include "nbsp_util.h"
@@ -27,6 +28,7 @@ static void exercise_input(const uint8_t *data, size_t size) {
 
     struct nbsp_git_status status;
     (void) nbsp_git_parse_status(input, &status);
+    (void) nbsp_cache_parse(input, "/tmp/nobsprompt-fuzz-repo", &status);
 
     unsigned prompt_options = 0U;
     if ((size & 1U) != 0U) prompt_options |= NBSP_PROMPT_PERCENT;

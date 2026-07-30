@@ -7,11 +7,19 @@
 #include "nbsp_git.h"
 
 bool nbsp_cache_git_dir(char *out, size_t out_len, bool create);
+bool nbsp_cache_parse(const char *content,
+    const char *repo_root,
+    struct nbsp_git_status *status);
 bool nbsp_cache_load(const char *repo_root, struct nbsp_git_status *status);
 bool nbsp_cache_store(const char *repo_root, const struct nbsp_git_status *status);
-int nbsp_cache_lock(const char *repo_root, unsigned stale_after_ms, char *path, size_t path_len);
-void nbsp_cache_unlock(int fd, const char *path);
+
+enum nbsp_cache_lock_result {
+    NBSP_CACHE_LOCK_ERROR = -2,
+    NBSP_CACHE_LOCK_BUSY = -1,
+};
+
+int nbsp_cache_lock(const char *repo_root);
+void nbsp_cache_unlock(int fd);
 int nbsp_cache_clear(void);
 
 #endif /* NBSP_CACHE_H */
-

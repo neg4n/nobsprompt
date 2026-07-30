@@ -10,10 +10,6 @@
 #include "nbsp_git.h"
 #include "nbsp_util.h"
 
-#ifndef PATH_MAX
-#define PATH_MAX 4096
-#endif
-
 #define NBSP_DURATION_THRESHOLD_MS 2000U
 #define NBSP_GIT_TIMEOUT_MS 1500U
 
@@ -230,18 +226,22 @@ int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify, bool force) 
         }
     }
 
-    char lock_path[PATH_MAX] = {0};
-    int lock_fd = nbsp_cache_lock(repo.root, timeout_ms, lock_path, sizeof lock_path);
-    if (lock_fd < 0) {
+    int lock_fd = nbsp_cache_lock(repo.root);
+    if (lock_fd == NBSP_CACHE_LOCK_BUSY) {
         nbsp_repo_free(&repo);
         send_notification(notify);
         return 0;
+    }
+    if (lock_fd == NBSP_CACHE_LOCK_ERROR) {
+        nbsp_repo_free(&repo);
+        send_notification(notify);
+        return 1;
     }
 
     if (!force && nbsp_cache_load(repo.root, &cached)) {
         uint64_t now = nbsp_wall_millis();
         if (now >= cached.updated_ms && now - cached.updated_ms < UINT64_C(250)) {
-            nbsp_cache_unlock(lock_fd, lock_path);
+            nbsp_cache_unlock(lock_fd);
             nbsp_repo_free(&repo);
             send_notification(notify);
             return 0;
@@ -260,7 +260,7 @@ int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify, bool force) 
         }
     }
 
-    nbsp_cache_unlock(lock_fd, lock_path);
+    nbsp_cache_unlock(lock_fd);
     nbsp_repo_free(&repo);
     send_notification(notify);
     return result;

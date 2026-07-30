@@ -173,7 +173,9 @@ option bypasses only the 250 ms duplicate-refresh debounce; locking, timeout,
 and atomic cache publication are unchanged.
 .TP
 .B cache clear
-Remove cache and lock files owned by nbsp.
+Remove cache snapshots and abandoned temporary snapshots owned by nbsp.
+Persistent per-repository lock files are left in place so concurrent refreshes
+continue to synchronize on the same inode.
 .TP
 .B dirs
 Emit the internal NUL-framed snapshot of immediate child directories used by

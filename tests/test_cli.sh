@@ -172,6 +172,15 @@ NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo" --force
 forced=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
 printf '%s' "$forced" | grep -Fq "[$branch ~1]"
 
+insecure_cache="$tmp/insecure-cache"
+mkdir -m 0755 "$insecure_cache"
+if NBSP_CACHE_DIR="$insecure_cache" "$nbsp" refresh --cwd "$repo" --force; then
+  echo 'refresh unexpectedly accepted an insecure cache root' >&2
+  exit 1
+else
+  test $? -eq 1
+fi
+
 printf 'changed\n' >> "$repo/a.txt"
 printf 'staged\n' >> "$repo/b.txt"
 git -C "$repo" add b.txt
@@ -330,4 +339,5 @@ mode_check=$(PATH="$(dirname "$nbsp"):$PATH" zsh -dfc '
 test "$mode_check" = 'detached 1'
 
 NBSP_CACHE_DIR="$cache" "$nbsp" cache clear
-test -z "$(find "$cache/git" -type f 2>/dev/null || true)"
+test -z "$(find "$cache/git" -type f ! -name '*.lock' 2>/dev/null || true)"
+test -n "$(find "$cache/git" -type f -name '*.lock' 2>/dev/null | head -n 1)"

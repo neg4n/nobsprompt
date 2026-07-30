@@ -166,7 +166,9 @@ for the complete behavior.
 
 `NBSP_CACHE_DIR` overrides the cache root. Otherwise `nbsp` uses
 `$XDG_CACHE_HOME/nbsp` or `~/Library/Caches/nbsp`, in that order.
-`nbsp cache clear` removes cache and lock files owned by `nbsp`.
+`nbsp cache clear` removes cache snapshots and abandoned temporary snapshots.
+It leaves the small per-repository lock files in place so concurrent refreshes
+continue to synchronize on the same inode.
 
 `NBSP_GIT_TIMEOUT_MS` controls the background Git timeout and defaults to
 1500 ms. These operational controls are shared by both modes. The built-in

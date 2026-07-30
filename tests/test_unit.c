@@ -1,8 +1,10 @@
+#include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "nbsp_cache.h"
@@ -20,6 +22,39 @@ static int failures = 0;
         ++failures; \
     } \
 } while (0)
+
+static bool write_cache_fixture(const char *path,
+    const char *version,
+    const char *branch,
+    const char *extra) {
+    FILE *file = fopen(path, "w");
+    if (!file) return false;
+    bool ok = fprintf(file,
+        "version=%s\n"
+        "repo=/tmp/repo%%20with%%20spaces\n"
+        "updated_ms=123456\n"
+        "branch=%s\n"
+        "staged=1\n"
+        "modified=2\n"
+        "untracked=3\n"
+        "conflicted=4\n"
+        "ahead=5\n"
+        "behind=6\n"
+        "stashes=7\n"
+        "%s",
+        version,
+        branch,
+        extra ? extra : "") > 0;
+    return fclose(file) == 0 && ok;
+}
+
+static void restore_environment(const char *name, const char *value) {
+    if (value) {
+        CHECK(setenv(name, value, 1) == 0);
+    } else {
+        CHECK(unsetenv(name) == 0);
+    }
+}
 
 static void test_paths(void) {
     char *path = nbsp_path_abbreviate("/Users/igorklepacki/programming/test");
@@ -114,9 +149,13 @@ static void test_status_parser(void) {
 }
 
 static void test_cache(void) {
-    char dir[128];
-    (void) snprintf(dir, sizeof dir, "/tmp/nbsp-unit-%ld", (long) getpid());
-    CHECK(mkdir(dir, 0700) == 0);
+    char *saved_cache = nbsp_strdup(getenv("NBSP_CACHE_DIR"));
+    char *saved_xdg = nbsp_strdup(getenv("XDG_CACHE_HOME"));
+    char *saved_home = nbsp_strdup(getenv("HOME"));
+    char dir_template[] = "/tmp/nbsp-unit-XXXXXX";
+    char *dir = mkdtemp(dir_template);
+    CHECK(dir != NULL);
+    if (!dir) goto restore;
     CHECK(setenv("NBSP_CACHE_DIR", dir, 1) == 0);
 
     struct nbsp_git_status stored = {
@@ -131,6 +170,19 @@ static void test_cache(void) {
         .behind = 6U,
         .stashes = 7U,
     };
+    struct nbsp_git_status invalid = stored;
+    invalid.updated_ms = 0U;
+    CHECK(!nbsp_cache_store("/tmp/repo with spaces", &invalid));
+    invalid = stored;
+    memset(invalid.branch, 'x', sizeof invalid.branch);
+    CHECK(!nbsp_cache_store("/tmp/repo with spaces", &invalid));
+    invalid = stored;
+    invalid.branch[0] = '\0';
+    CHECK(!nbsp_cache_store("/tmp/repo with spaces", &invalid));
+    invalid = stored;
+    invalid.branch[0] = '\n';
+    invalid.branch[1] = '\0';
+    CHECK(!nbsp_cache_store("/tmp/repo with spaces", &invalid));
     CHECK(nbsp_cache_store("/tmp/repo with spaces", &stored));
     struct nbsp_git_status loaded;
     CHECK(nbsp_cache_load("/tmp/repo with spaces", &loaded));
@@ -138,29 +190,106 @@ static void test_cache(void) {
     CHECK(loaded.staged == 1U && loaded.stashes == 7U);
     CHECK(!nbsp_cache_load("/tmp/a different repo", &loaded));
 
-    char lock_path[256];
-    int first_lock = nbsp_cache_lock("/tmp/repo with spaces", 1000U, lock_path, sizeof lock_path);
-    CHECK(first_lock >= 0);
-    char second_path[256];
-    int second_lock = nbsp_cache_lock("/tmp/repo with spaces", 1000U, second_path, sizeof second_path);
-    CHECK(second_lock < 0);
-    nbsp_cache_unlock(first_lock, lock_path);
-
-    char git_dir[256];
-    CHECK(nbsp_cache_git_dir(git_dir, sizeof git_dir, false));
-    char cache_path[512];
+    char git_dir[512] = {0};
+    bool git_dir_ready = nbsp_cache_git_dir(git_dir, sizeof git_dir, false);
+    CHECK(git_dir_ready);
+    if (!git_dir_ready) goto restore;
+    char cache_path[768];
     (void) snprintf(cache_path, sizeof cache_path, "%s/%016" PRIx64 ".cache",
         git_dir,
         nbsp_hash_path("/tmp/repo with spaces"));
-    FILE *corrupt = fopen(cache_path, "w");
-    CHECK(corrupt != NULL);
-    if (corrupt) {
-        fputs("version=1\nrepo=broken\nupdated_ms=not-a-number\n", corrupt);
-        CHECK(fclose(corrupt) == 0);
+
+    FILE *stored_file = fopen(cache_path, "r");
+    CHECK(stored_file != NULL);
+    if (stored_file) {
+        char first_line[32];
+        CHECK(fgets(first_line, sizeof first_line, stored_file) != NULL);
+        CHECK(strcmp(first_line, "version=2\n") == 0);
+        CHECK(fclose(stored_file) == 0);
+    }
+
+    char lock_path[768];
+    (void) snprintf(lock_path, sizeof lock_path, "%s/%016" PRIx64 ".lock",
+        git_dir,
+        nbsp_hash_path("/tmp/repo with spaces"));
+    int first_lock = nbsp_cache_lock("/tmp/repo with spaces");
+    CHECK(first_lock >= 0);
+    pid_t child = fork();
+    CHECK(child >= 0);
+    if (child == 0) {
+        int child_lock = nbsp_cache_lock("/tmp/repo with spaces");
+        if (child_lock >= 0) nbsp_cache_unlock(child_lock);
+        _exit(child_lock == NBSP_CACHE_LOCK_BUSY ? 0 : 1);
+    } else if (child > 0) {
+        int child_status = 0;
+        CHECK(waitpid(child, &child_status, 0) == child);
+        CHECK(WIFEXITED(child_status) && WEXITSTATUS(child_status) == 0);
+    }
+    nbsp_cache_unlock(first_lock);
+    CHECK(access(lock_path, F_OK) == 0);
+    int next_lock = nbsp_cache_lock("/tmp/repo with spaces");
+    CHECK(next_lock >= 0);
+    nbsp_cache_unlock(next_lock);
+
+    CHECK(write_cache_fixture(cache_path, "1", "percent%25branch", NULL));
+    CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
+
+    CHECK(write_cache_fixture(cache_path,
+        "2", "percent%25branch", "future_field=opaque%3Dvalue\n"));
+    CHECK(nbsp_cache_load("/tmp/repo with spaces", &loaded));
+
+    CHECK(write_cache_fixture(cache_path,
+        "2", "percent%25branch", "future_field=bad%\n"));
+    CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
+
+    CHECK(write_cache_fixture(cache_path,
+        "2", "percent%25branch", "future_field=raw=value\n"));
+    CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
+
+    CHECK(write_cache_fixture(cache_path, "2", "", NULL));
+    CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
+
+    CHECK(write_cache_fixture(cache_path, "2", "%0A", NULL));
+    CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
+
+    CHECK(write_cache_fixture(cache_path,
+        "2", "percent%25branch", "staged=9\n"));
+    CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
+
+    CHECK(write_cache_fixture(cache_path,
+        "2", "percent%25branch", "malformed-line\n"));
+    CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
+
+    CHECK(write_cache_fixture(cache_path, "2", "percent%25branch", NULL));
+    FILE *binary = fopen(cache_path, "a");
+    CHECK(binary != NULL);
+    if (binary) {
+        CHECK(fputc('\0', binary) == 0);
+        CHECK(fputs("future_field=hidden\n", binary) >= 0);
+        CHECK(fclose(binary) == 0);
     }
     CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
 
-    corrupt = fopen(cache_path, "w");
+    FILE *missing = fopen(cache_path, "w");
+    CHECK(missing != NULL);
+    if (missing) {
+        CHECK(fputs(
+            "version=2\n"
+            "repo=/tmp/repo%20with%20spaces\n"
+            "updated_ms=123456\n"
+            "branch=percent%25branch\n"
+            "staged=1\n"
+            "modified=2\n"
+            "untracked=3\n"
+            "conflicted=4\n"
+            "ahead=5\n"
+            "behind=6\n",
+            missing) >= 0);
+        CHECK(fclose(missing) == 0);
+    }
+    CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
+
+    FILE *corrupt = fopen(cache_path, "w");
     CHECK(corrupt != NULL);
     if (corrupt) {
         CHECK(fseek(corrupt, 17000L, SEEK_SET) == 0);
@@ -168,9 +297,116 @@ static void test_cache(void) {
         CHECK(fclose(corrupt) == 0);
     }
     CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
+    CHECK(nbsp_cache_store("/tmp/repo with spaces", &stored));
+
+    CHECK(chmod(cache_path, 0644) == 0);
+    CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
+    CHECK(!nbsp_cache_store("/tmp/repo with spaces", &stored));
+    CHECK(chmod(cache_path, 0600) == 0);
+
+    char backup_path[768];
+    (void) snprintf(backup_path, sizeof backup_path, "%s.backup", cache_path);
+    CHECK(rename(cache_path, backup_path) == 0);
+    CHECK(symlink(backup_path, cache_path) == 0);
+    CHECK(!nbsp_cache_load("/tmp/repo with spaces", &loaded));
+    CHECK(!nbsp_cache_store("/tmp/repo with spaces", &stored));
+    CHECK(unlink(cache_path) == 0);
+    CHECK(rename(backup_path, cache_path) == 0);
+
+    char unsafe_path[768];
+    (void) snprintf(unsafe_path, sizeof unsafe_path, "%s/0123456789abcdef.cache", git_dir);
+    CHECK(symlink(cache_path, unsafe_path) == 0);
+    errno = 0;
+    CHECK(nbsp_cache_clear() == -1);
+    CHECK(errno == EPERM);
+    struct stat unsafe_info;
+    CHECK(lstat(unsafe_path, &unsafe_info) == 0 && S_ISLNK(unsafe_info.st_mode));
+    CHECK(access(cache_path, F_OK) != 0);
+    CHECK(access(lock_path, F_OK) == 0);
+    CHECK(unlink(unsafe_path) == 0);
     CHECK(nbsp_cache_clear() == 0);
+    CHECK(unlink(lock_path) == 0);
     CHECK(rmdir(git_dir) == 0);
+
+    CHECK(chmod(dir, 0755) == 0);
+    CHECK(!nbsp_cache_git_dir(git_dir, sizeof git_dir, true));
+    CHECK(chmod(dir, 0700) == 0);
+
+    char real_root[512];
+    char linked_root[512];
+    (void) snprintf(real_root, sizeof real_root, "%s/real-cache", dir);
+    (void) snprintf(linked_root, sizeof linked_root, "%s/linked-cache", dir);
+    CHECK(mkdir(real_root, 0700) == 0);
+    CHECK(symlink(real_root, linked_root) == 0);
+    CHECK(setenv("NBSP_CACHE_DIR", linked_root, 1) == 0);
+    CHECK(!nbsp_cache_git_dir(git_dir, sizeof git_dir, true));
+    CHECK(unlink(linked_root) == 0);
+    CHECK(rmdir(real_root) == 0);
+
+    char real_parent[512];
+    char linked_parent[512];
+    char nested_root[512];
+    (void) snprintf(real_parent, sizeof real_parent, "%s/real-parent", dir);
+    (void) snprintf(linked_parent, sizeof linked_parent, "%s/linked-parent", dir);
+    (void) snprintf(nested_root, sizeof nested_root, "%s/cache", linked_parent);
+    CHECK(mkdir(real_parent, 0700) == 0);
+    CHECK(symlink(real_parent, linked_parent) == 0);
+    CHECK(setenv("NBSP_CACHE_DIR", nested_root, 1) == 0);
+    CHECK(!nbsp_cache_git_dir(git_dir, sizeof git_dir, true));
+    CHECK(unlink(linked_parent) == 0);
+    CHECK(rmdir(real_parent) == 0);
+
+    CHECK(setenv("NBSP_CACHE_DIR", "relative/cache", 1) == 0);
+    CHECK(!nbsp_cache_git_dir(git_dir, sizeof git_dir, true));
+
+    CHECK(unsetenv("NBSP_CACHE_DIR") == 0);
+    CHECK(unsetenv("XDG_CACHE_HOME") == 0);
+    CHECK(unsetenv("HOME") == 0);
+    CHECK(!nbsp_cache_git_dir(git_dir, sizeof git_dir, true));
+
+    char xdg[512];
+    (void) snprintf(xdg, sizeof xdg, "%s/xdg", dir);
+    CHECK(mkdir(xdg, 0700) == 0);
+    CHECK(setenv("XDG_CACHE_HOME", xdg, 1) == 0);
+    CHECK(nbsp_cache_git_dir(git_dir, sizeof git_dir, true));
+    char expected[768];
+    char canonical_xdg[512];
+    CHECK(realpath(xdg, canonical_xdg) != NULL);
+    (void) snprintf(expected, sizeof expected, "%s/nbsp/git", canonical_xdg);
+    CHECK(strcmp(git_dir, expected) == 0);
+    CHECK(rmdir(git_dir) == 0);
+    (void) snprintf(expected, sizeof expected, "%s/nbsp", xdg);
+    CHECK(rmdir(expected) == 0);
+    CHECK(rmdir(xdg) == 0);
+
+    char fake_home[512];
+    (void) snprintf(fake_home, sizeof fake_home, "%s/home", dir);
+    CHECK(mkdir(fake_home, 0700) == 0);
+    CHECK(setenv("XDG_CACHE_HOME", "relative/cache", 1) == 0);
+    CHECK(setenv("HOME", fake_home, 1) == 0);
+    CHECK(nbsp_cache_git_dir(git_dir, sizeof git_dir, true));
+    char canonical_home[512];
+    CHECK(realpath(fake_home, canonical_home) != NULL);
+    (void) snprintf(expected, sizeof expected,
+        "%s/Library/Caches/nbsp/git", canonical_home);
+    CHECK(strcmp(git_dir, expected) == 0);
+    CHECK(rmdir(git_dir) == 0);
+    (void) snprintf(expected, sizeof expected, "%s/Library/Caches/nbsp", fake_home);
+    CHECK(rmdir(expected) == 0);
+    (void) snprintf(expected, sizeof expected, "%s/Library/Caches", fake_home);
+    CHECK(rmdir(expected) == 0);
+    (void) snprintf(expected, sizeof expected, "%s/Library", fake_home);
+    CHECK(rmdir(expected) == 0);
+    CHECK(rmdir(fake_home) == 0);
     CHECK(rmdir(dir) == 0);
+
+restore:
+    restore_environment("NBSP_CACHE_DIR", saved_cache);
+    restore_environment("XDG_CACHE_HOME", saved_xdg);
+    restore_environment("HOME", saved_home);
+    free(saved_cache);
+    free(saved_xdg);
+    free(saved_home);
 }
 
 static void test_buffer_growth(void) {
