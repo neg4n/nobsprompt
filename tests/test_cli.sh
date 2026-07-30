@@ -223,9 +223,29 @@ git -C "$selector_repo" add foreign.txt
 git -C "$selector_repo" commit -qm initial
 printf 'foreign staged\n' >> "$selector_repo/foreign.txt"
 git -C "$selector_repo" add foreign.txt
+selector_excludes="$tmp/selector-excludes"
+printf '*\n' > "$selector_excludes"
+selector_global_config="$tmp/selector-global-config"
+git config -f "$selector_global_config" core.excludesFile "$selector_excludes"
+selector_real_git=$(command -v git)
+selector_bin="$tmp/selector-bin"
+mkdir "$selector_bin"
+cat > "$selector_bin/git" <<'EOF'
+#!/bin/sh
+if test "${GIT_CONFIG_GLOBAL+x}" = x || \
+    test "${GIT_CONFIG_SYSTEM+x}" = x || \
+    test "${GIT_CONFIG_NOSYSTEM+x}" = x; then
+  exit 97
+fi
+exec "$NBSP_TEST_REAL_GIT" "$@"
+EOF
+chmod 0755 "$selector_bin/git"
 GIT_DIR="$selector_repo/.git" GIT_WORK_TREE="$selector_repo" \
   GIT_INDEX_FILE="$selector_repo/.git/index" GIT_CONFIG_COUNT=1 \
   GIT_CONFIG_KEY_0=core.worktree GIT_CONFIG_VALUE_0="$selector_repo" \
+  GIT_CONFIG_GLOBAL="$selector_global_config" \
+  GIT_CONFIG_SYSTEM="$selector_global_config" GIT_CONFIG_NOSYSTEM=1 \
+  NBSP_TEST_REAL_GIT="$selector_real_git" PATH="$selector_bin:$PATH" \
   NBSP_CACHE_DIR="$cache" \
   "$nbsp" refresh --cwd "$repo" --force
 selector_isolated=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
