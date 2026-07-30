@@ -191,6 +191,25 @@ NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo"
 warm=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
 printf '%s' "$warm" | grep -Fq "[$branch +1 ~1 ?1]"
 
+selector_repo="$tmp/selector-repo"
+mkdir -p "$selector_repo"
+git -C "$selector_repo" init -q
+git -C "$selector_repo" config user.name 'nbsp tests'
+git -C "$selector_repo" config user.email 'nbsp@example.invalid'
+git -C "$selector_repo" config commit.gpgsign false
+printf 'foreign\n' > "$selector_repo/foreign.txt"
+git -C "$selector_repo" add foreign.txt
+git -C "$selector_repo" commit -qm initial
+printf 'foreign staged\n' >> "$selector_repo/foreign.txt"
+git -C "$selector_repo" add foreign.txt
+GIT_DIR="$selector_repo/.git" GIT_WORK_TREE="$selector_repo" \
+  GIT_INDEX_FILE="$selector_repo/.git/index" GIT_CONFIG_COUNT=1 \
+  GIT_CONFIG_KEY_0=core.worktree GIT_CONFIG_VALUE_0="$selector_repo" \
+  NBSP_CACHE_DIR="$cache" \
+  "$nbsp" refresh --cwd "$repo" --force
+selector_isolated=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+printf '%s' "$selector_isolated" | grep -Fq "[$branch +1 ~1 ?1]"
+
 data=$(cd "$repo" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
   NBSP_CACHE_DIR="$cache" "$nbsp" data --status 7 --duration-ms 2450 --jobs 2)
 printf '%s\n' "$data" | grep -Fxq 'schema_version=1'
@@ -235,6 +254,14 @@ wait
 race_prompt=$(cd "$repo" && NBSP_CACHE_DIR="$race_cache" "$nbsp" prompt)
 printf '%s' "$race_prompt" | grep -Fq "[$branch +1 ~1 ?1]"
 
+mkdir -p "$repo/nested"
+logical_path="$tmp/logical-nested"
+logical_cache="$tmp/logical-cache"
+ln -s "$repo/nested" "$logical_path"
+NBSP_CACHE_DIR="$logical_cache" "$nbsp" refresh --cwd "$logical_path" --force
+logical_prompt=$(cd "$repo/nested" && NBSP_CACHE_DIR="$logical_cache" "$nbsp" prompt)
+printf '%s' "$logical_prompt" | grep -Fq "[$branch +1 ~1 ?1]"
+
 worktree="$tmp/worktree"
 git -C "$repo" worktree add -qb worktree-check "$worktree"
 worktree_cold=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
@@ -245,7 +272,7 @@ printf '%s' "$worktree_warm" | grep -Fq '[worktree-check]'
 
 git -C "$worktree" switch -qc 'feature/100%'
 percent_prompt=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
-printf '%s' "$percent_prompt" | grep -Fq '[feature/100%%]'
+printf '%s' "$percent_prompt" | grep -Fq '[feature/100%% ...]'
 
 danger_branch='feature/$(touch${IFS}$NBSP_PROMPT_MARKER)-`touch${IFS}$NBSP_PROMPT_MARKER`-!-%'
 git -C "$worktree" switch -qc "$danger_branch"
@@ -264,7 +291,7 @@ test ! -e "$prompt_marker"
 git -C "$worktree" checkout --detach -q
 detached=$(git -C "$worktree" rev-parse --short=8 HEAD)
 detached_prompt=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
-printf '%s' "$detached_prompt" | grep -Fq "[$detached]"
+printf '%s' "$detached_prompt" | grep -Fq "[$detached ...]"
 
 fakebin="$tmp/fakebin"
 mkdir -p "$fakebin"
@@ -282,6 +309,62 @@ else
 fi
 preserved=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
 printf '%s' "$preserved" | grep -Fq "[$branch +1 ~1 ?1]"
+
+printf '#!/bin/sh\nexec 1>&-\n/bin/sleep 2\n' > "$fakebin/git"
+chmod +x "$fakebin/git"
+if (cd "$repo" && PATH="$fakebin:$PATH" NBSP_CACHE_DIR="$cache" \
+  NBSP_GIT_TIMEOUT_MS=50 "$nbsp" refresh --cwd "$repo" --force); then
+  echo 'Git process that closed stdout escaped its timeout' >&2
+  exit 1
+else
+  test $? -eq 124
+fi
+
+printf '#!/bin/sh\nexit 99\n' > "$fakebin/git"
+chmod +x "$fakebin/git"
+if (cd "$repo" && PATH="$fakebin:$PATH" NBSP_CACHE_DIR="$cache" \
+  "$nbsp" refresh --cwd "$repo" --force); then
+  echo 'failed Git refresh unexpectedly succeeded' >&2
+  exit 1
+else
+  test $? -eq 1
+fi
+
+printf '#!/bin/sh\nexit 0\n' > "$fakebin/git"
+chmod +x "$fakebin/git"
+if (cd "$repo" && PATH="$fakebin:$PATH" NBSP_CACHE_DIR="$cache" \
+  "$nbsp" refresh --cwd "$repo" --force); then
+  echo 'empty Git status unexpectedly succeeded' >&2
+  exit 1
+else
+  test $? -eq 1
+fi
+
+printf '#!/bin/sh\nprintf "# branch.oid 1234567890abcdef1234567890abcdef12345678\\n# branch.head main\\nbogus\\n"\n' > "$fakebin/git"
+chmod +x "$fakebin/git"
+if (cd "$repo" && PATH="$fakebin:$PATH" NBSP_CACHE_DIR="$cache" \
+  "$nbsp" refresh --cwd "$repo" --force); then
+  echo 'malformed Git status unexpectedly succeeded' >&2
+  exit 1
+else
+  test $? -eq 1
+fi
+
+printf '#!/bin/sh\nprintf "ref: refs/heads/mismatch\\n" > "$NBSP_GIT_REPO/.git/HEAD"\nprintf "# branch.oid 1234567890abcdef1234567890abcdef12345678\\n# branch.head %%s\\n" "$NBSP_GIT_OLD_BRANCH"\n' > "$fakebin/git"
+chmod +x "$fakebin/git"
+if (cd "$repo" && NBSP_GIT_REPO="$repo" NBSP_GIT_OLD_BRANCH="$branch" \
+  PATH="$fakebin:$PATH" NBSP_CACHE_DIR="$cache" \
+  "$nbsp" refresh --cwd "$repo" --force); then
+  echo 'branch-changing Git refresh unexpectedly succeeded' >&2
+  exit 1
+else
+  test $? -eq 1
+fi
+mismatch_data=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" data)
+printf '%s\n' "$mismatch_data" | grep -Fxq 'git_branch=mismatch'
+printf '%s\n' "$mismatch_data" | grep -Fxq 'git_valid=0'
+git -C "$repo" symbolic-ref HEAD "refs/heads/$branch"
+NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo" --force
 
 printf '#!/bin/sh\n: > "$NBSP_GIT_MARKER"\nexit 99\n' > "$fakebin/git"
 chmod +x "$fakebin/git"

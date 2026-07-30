@@ -64,8 +64,8 @@ bool nbsp_dirs_write(FILE *out, const char *cwd) {
             sizeof("complete") + sizeof("1")
     };
     bool ok = true;
-    errno = 0;
     for (;;) {
+        errno = 0;
         struct dirent *entry = readdir(directory);
         if (!entry) {
             if (errno != 0) ok = false;

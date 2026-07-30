@@ -48,8 +48,13 @@ bool nbsp_prompt_data_collect(const char *cwd,
     struct nbsp_repo repo;
     if (nbsp_git_discover(cwd, &repo)) {
         data->git_present = true;
-        struct nbsp_git_status cached;
-        if (nbsp_cache_load(repo.root, &cached)) {
+        struct nbsp_git_status cached = {0};
+        bool cache_loaded = nbsp_cache_load(repo.root, &cached);
+        char current_branch[sizeof data->git_branch] = {0};
+        bool branch_loaded = nbsp_git_read_branch(
+            &repo, current_branch, sizeof current_branch);
+        if (cache_loaded && branch_loaded &&
+            strcmp(cached.branch, current_branch) == 0) {
             data->git_valid = true;
             data->git_updated_ms = cached.updated_ms;
             data->git_staged = cached.staged;
@@ -59,11 +64,11 @@ bool nbsp_prompt_data_collect(const char *cwd,
             data->git_ahead = cached.ahead;
             data->git_behind = cached.behind;
             data->git_stashes = cached.stashes;
-        } else {
-            memset(&cached, 0, sizeof cached);
         }
-        if (!nbsp_git_read_branch(&repo, data->git_branch, sizeof data->git_branch) &&
-            cached.branch[0] != '\0') {
+        if (branch_loaded) {
+            (void) snprintf(
+                data->git_branch, sizeof data->git_branch, "%s", current_branch);
+        } else if (cache_loaded) {
             (void) snprintf(data->git_branch, sizeof data->git_branch, "%s", cached.branch);
         }
         nbsp_repo_free(&repo);
@@ -250,13 +255,12 @@ int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify, bool force) 
 
     struct nbsp_git_status fresh;
     int result = nbsp_git_collect(&repo, timeout_ms, &fresh);
-    if (result == 0) {
+    if (result == NBSP_GIT_OK) {
         char branch[sizeof fresh.branch];
-        if (nbsp_git_read_branch(&repo, branch, sizeof branch)) {
-            (void) snprintf(fresh.branch, sizeof fresh.branch, "%s", branch);
-        }
-        if (!nbsp_cache_store(repo.root, &fresh)) {
-            result = 1;
+        if (!nbsp_git_read_branch(&repo, branch, sizeof branch) ||
+            strcmp(branch, fresh.branch) != 0 ||
+            !nbsp_cache_store(repo.root, &fresh)) {
+            result = NBSP_GIT_ERROR;
         }
     }
 

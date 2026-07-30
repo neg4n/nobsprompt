@@ -127,15 +127,25 @@ static void test_escape_and_nvm(void) {
 
 static void test_status_parser(void) {
     const char *sample =
-        "# branch.oid 1234567890abcdef\n"
+        "# branch.oid 1234567890abcdef1234567890abcdef12345678\n"
         "# branch.head main\n"
         "# branch.upstream origin/main\n"
         "# branch.ab +2 -3\n"
         "# stash 4\n"
-        "1 M. N... 100644 100644 100644 a a staged\n"
-        "1 .M N... 100644 100644 100644 a a modified\n"
-        "1 MM N... 100644 100644 100644 a a both\n"
-        "u UU N... 100644 100644 100644 100644 a a a conflict\n"
+        "# Future-Header opaque value\n"
+        "1 M. N... 100644 100644 100644 "
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa staged\n"
+        "1 .M N... 100644 100644 100644 "
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa modified\n"
+        "1 MM N... 100644 100644 100644 "
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa both\n"
+        "u UU N... 100644 100644 100644 100644 "
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa conflict\n"
         "? untracked\n";
     struct nbsp_git_status status;
     CHECK(nbsp_git_parse_status(sample, &status));
@@ -146,6 +156,139 @@ static void test_status_parser(void) {
     CHECK(status.untracked == 1U);
     CHECK(status.conflicted == 1U);
     CHECK(status.ahead == 2U && status.behind == 3U && status.stashes == 4U);
+
+    const char *detached =
+        "# branch.oid abcdef0123456789abcdef0123456789abcdef01\n"
+        "# branch.head (detached)\n";
+    CHECK(nbsp_git_parse_status(detached, &status));
+    CHECK(status.valid && strcmp(status.branch, "abcdef01") == 0);
+
+    const char *invalid[] = {
+        "",
+        "# branch.oid 1234567890abcdef1234567890abcdef12345678\n",
+        "# branch.oid 1234567890abcdef1234567890abcdef12345678\n"
+            "# branch.head main\n# branch.head other\n",
+        "# branch.oid 1234567890abcdef1234567890abcdef12345678\n"
+            "# branch.head main\n#unknown value\n",
+        "# branch.oid 1234567890abcdef1234567890abcdef12345678\n"
+            "# branch.head main\n# branch.ab +42949672960 -0\n",
+        "# branch.oid 1234567890abcdef1234567890abcdef12345678\n"
+            "# branch.head main\n# stash -1\n",
+        "# branch.oid 1234567890abcdef1234567890abcdef12345678\n"
+            "# branch.head main\n# stash 0\n",
+        "# branch.oid 1234567890abcdef1234567890abcdef12345678\n"
+            "# branch.head main\n1 M. N... 100644\n",
+        "# branch.oid not-a-hex-object\n# branch.head (detached)\n",
+        "# branch.oid 1234567890abcdef1234567890abcdef12345678\n"
+            "# branch.head main\n\n? untracked\n",
+        "# branch.oid 1234567890abcdef1234567890abcdef12345678\n"
+            "# branch.head main",
+    };
+    for (size_t i = 0U; i < sizeof invalid / sizeof invalid[0]; ++i) {
+        memset(&status, 0xa5, sizeof status);
+        CHECK(!nbsp_git_parse_status(invalid[i], &status));
+        CHECK(!status.valid);
+    }
+
+    char long_branch[512];
+    const char *prefix =
+        "# branch.oid 1234567890abcdef1234567890abcdef12345678\n"
+        "# branch.head ";
+    size_t prefix_len = strlen(prefix);
+    memcpy(long_branch, prefix, prefix_len);
+    memset(long_branch + prefix_len, 'a', sizeof status.branch);
+    long_branch[prefix_len + sizeof status.branch] = '\n';
+    long_branch[prefix_len + sizeof status.branch + 1U] = '\0';
+    CHECK(!nbsp_git_parse_status(long_branch, &status));
+}
+
+static bool write_text_file(const char *path, const char *text) {
+    FILE *file = fopen(path, "w");
+    if (!file) return false;
+    bool ok = fputs(text, file) >= 0;
+    return fclose(file) == 0 && ok;
+}
+
+static void test_git_discovery(void) {
+#ifdef __APPLE__
+    char root_template[] = "/private/tmp/nbsp-git-unit-XXXXXX";
+#else
+    char root_template[] = "/tmp/nbsp-git-unit-XXXXXX";
+#endif
+    char *root = mkdtemp(root_template);
+    CHECK(root != NULL);
+    if (!root) return;
+
+    char repo_path[512];
+    char git_path[512];
+    char head_path[512];
+    char child_path[512];
+    char linked_child[512];
+    (void) snprintf(repo_path, sizeof repo_path, "%s/repo", root);
+    (void) snprintf(git_path, sizeof git_path, "%s/.git", repo_path);
+    (void) snprintf(head_path, sizeof head_path, "%s/HEAD", git_path);
+    (void) snprintf(child_path, sizeof child_path, "%s/nested", repo_path);
+    (void) snprintf(linked_child, sizeof linked_child, "%s/logical-nested", root);
+    CHECK(mkdir(repo_path, 0700) == 0);
+    CHECK(mkdir(git_path, 0700) == 0);
+    CHECK(mkdir(child_path, 0700) == 0);
+    CHECK(write_text_file(head_path, "ref: refs/heads/main\n"));
+    CHECK(symlink(child_path, linked_child) == 0);
+
+    struct nbsp_repo repo;
+    CHECK(nbsp_git_discover(linked_child, &repo));
+    char expected_root[NBSP_PATH_CAP];
+    char expected_git[NBSP_PATH_CAP];
+    CHECK(realpath(repo_path, expected_root) != NULL);
+    CHECK(realpath(git_path, expected_git) != NULL);
+    CHECK(strcmp(repo.root, expected_root) == 0);
+    CHECK(strcmp(repo.git_dir, expected_git) == 0);
+    char branch[sizeof ((struct nbsp_git_status *) 0)->branch];
+    CHECK(nbsp_git_read_branch(&repo, branch, sizeof branch));
+    CHECK(strcmp(branch, "main") == 0);
+
+    char oversized_head[512] = "ref: refs/heads/";
+    size_t head_prefix_len = strlen(oversized_head);
+    memset(oversized_head + head_prefix_len, 'b', 256U);
+    oversized_head[head_prefix_len + 256U] = '\n';
+    oversized_head[head_prefix_len + 257U] = '\0';
+    CHECK(write_text_file(head_path, oversized_head));
+    CHECK(!nbsp_git_read_branch(&repo, branch, sizeof branch));
+    CHECK(write_text_file(head_path,
+        "abcdef0123456789abcdef0123456789abcdef01\n"));
+    CHECK(nbsp_git_read_branch(&repo, branch, sizeof branch));
+    CHECK(strcmp(branch, "abcdef01") == 0);
+    CHECK(write_text_file(head_path, "abcdef0123456789\n"));
+    CHECK(!nbsp_git_read_branch(&repo, branch, sizeof branch));
+
+    char outer_path[512];
+    char outer_git[512];
+    char outer_head[512];
+    char inner_path[512];
+    char inner_git_file[512];
+    (void) snprintf(outer_path, sizeof outer_path, "%s/outer", root);
+    (void) snprintf(outer_git, sizeof outer_git, "%s/.git", outer_path);
+    (void) snprintf(outer_head, sizeof outer_head, "%s/HEAD", outer_git);
+    (void) snprintf(inner_path, sizeof inner_path, "%s/inner", outer_path);
+    (void) snprintf(inner_git_file, sizeof inner_git_file, "%s/.git", inner_path);
+    CHECK(mkdir(outer_path, 0700) == 0);
+    CHECK(mkdir(outer_git, 0700) == 0);
+    CHECK(mkdir(inner_path, 0700) == 0);
+    CHECK(write_text_file(outer_head, "ref: refs/heads/outer\n"));
+    CHECK(write_text_file(inner_git_file, "gitdir: \n"));
+    CHECK(!nbsp_git_discover(inner_path, &repo));
+    CHECK(unlink(inner_git_file) == 0);
+    CHECK(rmdir(inner_path) == 0);
+    CHECK(unlink(outer_head) == 0);
+    CHECK(rmdir(outer_git) == 0);
+    CHECK(rmdir(outer_path) == 0);
+
+    CHECK(unlink(linked_child) == 0);
+    CHECK(rmdir(child_path) == 0);
+    CHECK(unlink(head_path) == 0);
+    CHECK(rmdir(git_path) == 0);
+    CHECK(rmdir(repo_path) == 0);
+    CHECK(rmdir(root) == 0);
 }
 
 static void test_cache(void) {
@@ -542,16 +685,19 @@ static void test_dirs_output(void) {
     char alpha[160];
     char spaced[160];
     char link[160];
+    char broken_link[160];
     char regular[160];
     (void) snprintf(root, sizeof root, "/tmp/nbsp-dirs-unit-%ld", (long) getpid());
     (void) snprintf(alpha, sizeof alpha, "%s/alpha", root);
     (void) snprintf(spaced, sizeof spaced, "%s/space dir", root);
     (void) snprintf(link, sizeof link, "%s/linked", root);
+    (void) snprintf(broken_link, sizeof broken_link, "%s/broken", root);
     (void) snprintf(regular, sizeof regular, "%s/regular", root);
     CHECK(mkdir(root, 0700) == 0);
     CHECK(mkdir(alpha, 0700) == 0);
     CHECK(mkdir(spaced, 0700) == 0);
     CHECK(symlink("alpha", link) == 0);
+    CHECK(symlink("missing-target", broken_link) == 0);
     FILE *file = fopen(regular, "w");
     CHECK(file != NULL);
     if (file) CHECK(fclose(file) == 0);
@@ -568,12 +714,14 @@ static void test_dirs_output(void) {
         CHECK(nul_output_has_pair(output, length, "dir", "alpha"));
         CHECK(nul_output_has_pair(output, length, "dir", "space dir"));
         CHECK(nul_output_has_pair(output, length, "dir", "linked"));
+        CHECK(!nul_output_has_pair(output, length, "dir", "broken"));
         CHECK(!nul_output_has_pair(output, length, "dir", "regular"));
         CHECK(nul_output_has_pair(output, length, "complete", "1"));
         CHECK(fclose(stream) == 0);
     }
 
     CHECK(unlink(regular) == 0);
+    CHECK(unlink(broken_link) == 0);
     CHECK(unlink(link) == 0);
     CHECK(rmdir(spaced) == 0);
     CHECK(rmdir(alpha) == 0);
@@ -584,6 +732,7 @@ int main(void) {
     test_paths();
     test_escape_and_nvm();
     test_status_parser();
+    test_git_discovery();
     test_cache();
     test_prompt();
     test_data_output();
