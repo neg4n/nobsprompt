@@ -602,6 +602,8 @@ static int collect_output(pid_t child,
                 return WIFEXITED(child_status) && WEXITSTATUS(child_status) == 0
                     ? NBSP_GIT_OK
                     : NBSP_GIT_ERROR;
+            } else if (waited < 0 && errno == ECHILD) {
+                return NBSP_GIT_ERROR;
             } else if (waited < 0 && errno != EINTR) {
                 kill_process_group(child);
                 reap_child(child);
