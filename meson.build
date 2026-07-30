@@ -31,7 +31,7 @@ add_project_arguments(
 
 src_inc = include_directories('src')
 
-python3 = find_program('python3')
+python3 = find_program('python3', version: '>=3.9')
 zsh_init_source = files('src/nbsp_zsh.zsh')
 zsh_generated_source = custom_target(
   'nbsp-zsh-source',

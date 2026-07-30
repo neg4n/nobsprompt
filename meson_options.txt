@@ -4,3 +4,10 @@ option(
   value: false,
   description: 'Build mutation-fuzz targets with AddressSanitizer and UndefinedBehaviorSanitizer',
 )
+
+option(
+  'zsh_tests',
+  type: 'feature',
+  value: 'auto',
+  description: 'Run Expect-backed interactive Zsh tests',
+)
