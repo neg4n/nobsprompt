@@ -10,7 +10,7 @@ zsh_autosuggest_source=$3
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/nbsp-cli.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
-"$nbsp" --version | grep -q '^nbsp 0\.1\.0$'
+"$nbsp" --version | grep -q '^nbsp 0\.2\.0$'
 "$nbsp" --help | grep -q 'nbsp init zsh'
 "$nbsp" --help | grep -q 'nbsp init zsh \[--detached\] \[--autosuggest\]'
 "$nbsp" --help | grep -q 'nbsp data'
