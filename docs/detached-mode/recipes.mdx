@@ -20,7 +20,7 @@ git_prompt() {
   nbsp_prompt_quote "${NBSP_DATA[path]}"
   path=$REPLY
 
-  if [[ ${NBSP_DATA[git_present]} == 1 ]]; then
+  if [[ ${NBSP_DATA[git_present]} == 1 && -n ${NBSP_DATA[git_branch]} ]]; then
     nbsp_prompt_quote "${NBSP_DATA[git_branch]}"
     branch=$REPLY
     git=" %F{cyan}git:${branch}%f"
@@ -97,7 +97,7 @@ nerd_prompt() {
   nbsp_prompt_quote "${NBSP_DATA[path]}"
   path=$REPLY
 
-  if [[ ${NBSP_DATA[git_present]} == 1 ]]; then
+  if [[ ${NBSP_DATA[git_present]} == 1 && -n ${NBSP_DATA[git_branch]} ]]; then
     nbsp_prompt_quote "${NBSP_DATA[git_branch]}"
     branch=" %F{cyan} $REPLY%f"
   fi
@@ -156,8 +156,10 @@ nbsp_data_update_functions+=(title_prompt)
 title_prompt
 ```
 
-Async completion updates `NBSP_DATA` and requests a redraw. `nbsp` does not
-replace or interpret the OSC wrapper.
+When an asynchronous worker completes, the integration requests a complete
+data-frame reload and redraw. A successful parse replaces `NBSP_DATA` and runs
+this callback; a failed parse preserves the previous prompt data. `nbsp` does
+not replace or interpret the OSC wrapper.
 
 ## Presentation remains yours
 

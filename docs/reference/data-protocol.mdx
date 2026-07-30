@@ -3,14 +3,17 @@ title: Data protocol
 description: Reference the versioned nbsp data protocol, its line and NUL formats, safe parsing rules, and command metadata.
 ---
 
-`nbsp data` serializes the same cache-only facts that power nobsprompt. It never
-starts Git.
+`nbsp data` serializes the same foreground snapshot that powers nobsprompt. It
+never starts Git or Node, but it does call `getcwd()`, discover repository
+metadata, read HEAD, validate a cache file, and inspect `NVM_BIN`. If `getcwd()`
+or serialization fails, it exits with status 1 and does not emit a complete
+frame.
 
 ## Readable line format
 
 ```console
 $ nbsp data --status 1 --duration-ms 2400 --jobs 2
-schema_version=1
+schema_version=2
 cwd=/Users/example/project
 path=/U/e/project
 status=1
@@ -23,9 +26,10 @@ git_branch=main
 ...
 ```
 
-`cwd` is the full physical working directory and `path` is its abbreviated
-display form. Detached callbacks can render `NBSP_DATA[cwd]` after passing it
-through `nbsp_prompt_quote`; they do not need to start `realpath`.
+`cwd` is the full physical working directory returned by `getcwd()`, and `path`
+is its abbreviated display form. Detached callbacks can render
+`NBSP_DATA[cwd]` after passing it through `nbsp_prompt_quote`; they do not need
+to start `realpath`.
 
 The default output is a versioned sequence of `key=value` records. Values use
 percent encoding, so common values remain readable while spaces, newlines,
@@ -33,25 +37,107 @@ percent encoding, so common values remain readable while spaces, newlines,
 
 Consumers should:
 
-- require a schema version they understand;
+- require schema 2 and every known schema-2 key exactly once;
 - select records by key rather than position;
-- ignore unknown keys added by a compatible schema;
+- ignore syntactically valid unknown keys added by a compatible schema;
 - percent-decode values before use;
+- require normal producer exit and a complete final record;
 - never evaluate the output as shell code.
+
+## Schema 2
+
+Schema 2 always emits these 18 keys:
+
+| Keys | Meaning |
+| --- | --- |
+| `schema_version` | The value `2` |
+| `cwd`, `path` | Physical current directory and its abbreviated display form |
+| `status`, `duration_ms`, `jobs` | Command metadata supplied by the caller |
+| `node_version` | A 1-255-byte ASCII label derived from the final `NVM_BIN` component (or its parent when a final `bin` has a preceding component), allowing letters, digits, `.`, `-`, and `_` and removing one leading `v` before a digit; otherwise empty |
+| `git_present` | `1` when native repository discovery succeeds |
+| `git_valid` | `1` only when a validated cache snapshot exists and its branch exactly matches directly read HEAD |
+| `git_branch` | Directly read branch or eight-character detached object label when available; otherwise a validated cached label can be exposed with `git_valid=0` |
+| `git_updated_ms` | Cache collection timestamp when `git_valid=1`, otherwise `0` |
+| `git_staged`, `git_modified`, `git_untracked`, `git_conflicted` | Validated porcelain-v2 record counts, or `0` when `git_valid=0` |
+| `git_ahead`, `git_behind`, `git_stashes` | Validated porcelain-v2 header counts, or `0` when `git_valid=0` |
+
+The protocol is a point-in-time observation. HEAD, the worktree, environment,
+or filesystem can change after collection; `git_valid=1` establishes branch
+coherence at collection time, not an ongoing freshness guarantee.
 
 ## Lossless NUL format
 
-`--format nul` emits alternating raw keys and values separated by NUL bytes:
+`--format nul` emits alternating raw keys and values separated by NUL bytes.
+Command substitution cannot preserve NUL delimiters, and a loop that merely
+stops at EOF cannot distinguish a complete frame from truncated output. This
+Zsh example appends the producer status out of band, validates pair boundaries,
+requires every schema-2 key once, rejects data after the status trailer, and
+publishes only after the whole frame passes:
 
 ```zsh
-typeset -A data
-while IFS= read -r -d '' key && IFS= read -r -d '' value; do
-  data[$key]=$value
-done < <(nbsp data --format nul)
+typeset -A nbsp_data
+
+load_nbsp_data() {
+  emulate -L zsh
+  local LC_ALL=C key= value=
+  local -A next
+  local -i count=0 valid=1 complete=0
+
+  while (( valid )); do
+    key=
+    if ! IFS= read -r -d '' key; then
+      [[ -z $key ]] || valid=0
+      break
+    fi
+    value=
+    if ! IFS= read -r -d '' value; then
+      valid=0
+      break
+    fi
+    if (( complete )); then
+      valid=0
+      break
+    fi
+    if [[ -z $key ]]; then
+      [[ $value == 0 ]] || valid=0
+      complete=1
+      continue
+    fi
+    if [[ $key != [a-z]* || $key == *[!a-z0-9_]* ]]; then
+      valid=0
+      break
+    fi
+    case $key in
+      schema_version|cwd|path|status|duration_ms|jobs|node_version|\
+      git_present|git_valid|git_branch|git_updated_ms|git_staged|\
+      git_modified|git_untracked|git_conflicted|git_ahead|git_behind|\
+      git_stashes)
+        if (( ${+next[$key]} )); then
+          valid=0
+          break
+        fi
+        next[$key]=$value
+        (( ++count ))
+        ;;
+      *) ;; # additive field in schema 2
+    esac
+  done < <(
+    command nbsp data --format nul
+    local -i producer_status=$?
+    print -rn -- $'\0'"$producer_status"$'\0'
+  )
+
+  (( valid && complete && count == 18 )) || return 1
+  [[ ${next[schema_version]-} == 2 ]] || return 1
+  nbsp_data=( "${(@kv)next}" )
+}
+
+load_nbsp_data || print -u2 -- 'nbsp data frame rejected'
 ```
 
-Command substitution cannot safely preserve NUL delimiters. Parse the records
-from a process substitution, pipe, or file descriptor.
+Validate numeric and Boolean value domains as required by your consumer before
+using them. The bundled detached loader follows the complete-frame publication
+pattern above and ignores compatible unknown keys.
 
 ## Command metadata
 
@@ -72,14 +158,14 @@ nbsp data --status 127 --duration-ms 2400 --jobs 2
 
 ## Detached integration
 
-Detached mode parses this protocol into the atomic `NBSP_DATA` associative
-array and adds the Zsh lifecycle around it:
+Detached mode parses this protocol into the `NBSP_DATA` associative array and
+adds the Zsh lifecycle around it:
 
 - pre-command and pre-prompt lifecycle tracking;
 - command timing and background job collection;
 - asynchronous `nbsp refresh`;
-- atomic `NBSP_DATA` replacement;
-- callback execution;
+- all-at-once `NBSP_DATA` replacement after a complete schema-2 frame;
+- callback execution after each successful parse, even when values are unchanged;
 - automatic ZLE redraw.
 
 See [Data and lifecycle](/detached-mode/data-lifecycle) for the `NBSP_DATA`

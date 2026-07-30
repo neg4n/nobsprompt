@@ -1,6 +1,6 @@
 ---
 title: Autosuggestions
-description: Use recent-history ghost text and live, path-aware directory suggestions without stale cd targets or foreground filesystem work.
+description: Use recent-history ghost text and point-in-time, path-aware directory suggestions without blocking foreground filesystem work.
 ---
 
 The recommended setup enables autosuggestions with either prompt mode:
@@ -15,28 +15,34 @@ replace Tab completion.
 
 :::warning[Use one autosuggestion engine]
 Do not combine this with `zsh-autosuggestions` or another plugin that owns ghost
-text. If one is already active, omit `--autosuggest`. Nobsprompt detects common
-early and late conflicts, disables only its autosuggestion engine, and prints a
-single actionable warning; the prompt continues to work.
+text. If one is already active, omit `--autosuggest`. Nobsprompt checks common
+early and late conflicts and leaves the prompt integration working. An early
+conflict is reported whenever conflicting initialization is attempted; a late
+conflict disables only this autosuggestion engine and warns once.
 :::
 
 ## Selection order
 
-Ordinary commands search the newest 4,096 in-memory Zsh history entries for an
-exact, case-sensitive prefix. A chosen candidate is reused while subsequent
-input still matches it.
+At initialization, nobsprompt snapshots up to 4,096 nonempty history values
+while examining at most 8,192 descending Zsh event numbers. It updates that
+snapshot at each `precmd`, including the newest command when Zsh's history ring
+is full. Ordinary commands search the snapshot for an exact, case-sensitive
+prefix. A chosen candidate can be reused while subsequent input still matches
+it, but all redraw eligibility checks—including the queued-input check—run
+before either cached reuse or a fresh search.
 
-Safely parseable `cd` paths use a different rule: the live directory snapshot
-is authoritative and history is only a ranking signal. Nobsprompt:
+Safely parseable `cd` paths use a different rule: a validated point-in-time
+directory snapshot gates candidates and history is only a ranking signal.
+Nobsprompt:
 
 1. resolves the parent implied by the typed path;
 2. asynchronously reads that parent's immediate child directories;
-3. offers the single live prefix match; or
-4. when several live children match, chooses the newest one also represented
+3. offers the single captured prefix match; or
+4. when several captured children match, chooses the newest one also represented
    by matching `cd` history.
 
-A historical directory missing when the parent snapshot is captured is never
-offered. For example, if history contains
+A historical directory missing when the parent snapshot is captured is not
+offered from that snapshot. For example, if history contains
 `cd ~/Desktop/programming/work` but only `web/` exists, typing
 `cd ~/Desktop/programming/w` suggests `eb/`, not `ork`.
 
@@ -44,10 +50,11 @@ offered. For example, if history contains
 matching history rank. Ordinary Tab completion remains available for every
 ambiguous or unsupported case.
 
-Suggestions are suppressed for multiline input or history results, leading
-whitespace, selections, a cursor before the end of the buffer, prefixes longer
-than 256 characters, complete results longer than 4,096 characters, and queued
-input.
+Suggestions are suppressed for multiline input, leading whitespace,
+selections, a cursor before the end of the buffer, prefixes longer than 256
+characters, complete results longer than 4,096 characters, and queued input.
+The engine does not separately label a buffer as typed versus recalled from
+history.
 
 ## Supported directory paths
 
@@ -60,18 +67,36 @@ They support:
 - `~/` paths;
 - closed quotes and backslash-escaped spaces.
 
-The parser performs lexical splitting and quote removal only. It never evaluates
-the command. Variables, command substitutions, globs, brace expansion, named
-directories such as `~user`, operators, unmatched quotes, and multiple operands
-remain ordinary history or Tab-completion territory.
+The parser performs Zsh lexical splitting and quote removal only. It never
+evaluates the command. It rejects operands whose source contains `$`,
+backticks, `*`, `?`, `[`, `]`, `{`, `}`, `(`, `)`, `<`, `>`, `|`, `&`, `;`,
+`^`, or `#`, including quoted or backslash-escaped forms. Named directories
+such as `~user`, an unquoted operand source beginning with `=`, unmatched
+quotes, multiple operands, and a leading `-` without `cd --` also remain
+ordinary history or Tab-completion territory.
 
-When `CDPATH` is nonempty, a bare relative name is not treated as `$PWD`-local;
-use `./name` for live path suggestions. A bare path without the `cd` command is
-also ordinary command history because Zsh would try to execute it.
+Explicit `.`, `..`, `./…`, and `../…` operands resolve from `$PWD` and bypass
+`cdpath`, as they do in Zsh. For other relative operands, nobsprompt scans
+`$PWD` only when it can prove that Zsh will try the current directory first.
+With `POSIX_CD` unset, that is true
+when `cdpath` is empty, when it contains no `.` or empty component (Zsh then
+tries `$PWD` implicitly first), or when its first component is `.` or empty. If
+a nonlocal component precedes an explicit `.` or empty component, nobsprompt
+does not guess. With `POSIX_CD` set, `cdpath` must be empty or its first
+component must be `.` or empty; otherwise `cdpath` is searched before the
+implicit current directory.
+This is the search order documented for [Zsh `cd`](https://zsh.sourceforge.io/Doc/Release/Shell-Builtin-Commands.html)
+and [`POSIX_CD`](https://zsh.sourceforge.io/Doc/Release/Options.html).
+
+The engine does not scan multiple `CDPATH` roots. If it cannot prove that its
+single `$PWD` snapshot describes the directory Zsh would choose, it leaves the
+case to history and Tab completion. Explicit dot-relative, absolute, and `~/`
+paths do not use `CDPATH`. A bare path without the `cd` command is ordinary
+command history because Zsh would try to execute it.
 
 ## Directory cost and safety
 
-The filesystem is never traversed on each keypress. The first eligible path
+The filesystem is not traversed on each keypress. The first eligible path
 starts one asynchronous `nbsp dirs` process for its resolved parent. Nested
 input such as `~/Desktop/programming/w` still reads only the immediate children
 of `~/Desktop/programming`; it does not walk from the home directory. The result
@@ -89,8 +114,11 @@ shows no `cd` suggestion. It never falls back to an unvalidated history path.
 
 A valid snapshot is sorted once and keyed by its parent. Prefix and history
 membership checks use binary search without filesystem syscalls. The snapshot
-is reused while the parent remains unchanged and replaced when input moves to a
-different parent. Appended directory text is shell-quoted before display or
+is reused while the parent remains unchanged, replaced when input moves to a
+different parent, and invalidated at `precmd` and `chpwd` boundaries. It is not
+continuously revalidated: a child created or removed after capture may remain
+absent or present until invalidation, and a suggested path can disappear before
+acceptance. Appended directory text is shell-quoted before display or
 insertion; names are data, never evaluated as Zsh source.
 
 ## Accepting and controlling suggestions
@@ -138,8 +166,11 @@ eval "$(nbsp init zsh --autosuggest)"
 ## Plugin compatibility
 
 If another engine is already loaded, nobsprompt reports the conflict and skips
-its own engine. If one appears later, nobsprompt disables itself and warns once
-at the next safe `precmd` boundary. Redraw-time detection remains silent and
+its own engine without setting its initialization guard. After removing that
+early conflict, re-sourcing `nbsp init zsh --autosuggest` can initialize the
+engine; repeated successful sourcing does not duplicate its hooks. If a
+conflicting engine appears later, nobsprompt disables itself and warns once at
+the next safe `precmd` boundary. Redraw-time detection remains silent and
 fail-closed so a warning cannot corrupt the active command line.
 
 Nobsprompt does not wrap every widget or overwrite custom Right Arrow bindings.

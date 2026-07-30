@@ -20,15 +20,18 @@ The output is one line:
 
 ## Segments
 
-The working directory is always visible. Parent segments are abbreviated to
-their first character while the final segment remains intact.
+On a successful collection, the physical working directory returned by
+`getcwd()` is visible. Parent segments are abbreviated to their first
+character (with the leading dot retained for hidden parents), while the final
+segment remains intact. If `getcwd()` fails, `nbsp prompt` exits with status 1
+and writes no prompt; the bundled integration uses its plain `> ` fallback.
 
 Other segments appear only when they carry useful information:
 
 | Segment | When it appears |
 | --- | --- |
-| Git | Inside a repository with a readable branch or detached commit |
-| Node | `NVM_BIN` contains an active version |
+| Git | A repository is discovered and current HEAD or a cache snapshot supplies a branch label |
+| Node | The final `NVM_BIN` component, or its parent when a final `bin` has a preceding component, is a 1-255-byte ASCII label containing only letters, digits, `.`, `-`, or `_`; one leading `v` before a digit is removed |
 | Duration | The previous command lasted at least 2 seconds |
 | Jobs | One or more background jobs exist |
 | Failure | The previous command returned a nonzero status |
@@ -37,10 +40,10 @@ The Git markers are:
 
 | Marker | Meaning |
 | --- | --- |
-| `+` | Staged paths |
-| `~` | Modified paths |
-| `?` | Untracked paths |
-| `!` | Conflicted paths |
+| `+` | Porcelain records with staged changes |
+| `~` | Porcelain records with worktree changes |
+| `?` | Untracked porcelain records |
+| `!` | Unmerged porcelain records |
 | `^` | Commits ahead of upstream |
 | `v` | Commits behind upstream |
 | `*` | Stashes |
@@ -71,16 +74,19 @@ presentation settings. Use detached mode for presentation changes.
 ## Shared shell behavior
 
 The opinionated and detached modes use the same Zsh lifecycle for timing, jobs,
-asynchronous Git refresh, redraw correction, and external editing with
-`Alt+E`. With vi, vim, or nvim, the editor cursor position is restored when the
-command returns to Zsh.
+asynchronous Git refresh, redraw correction, and a private external-editor
+widget. Initialization binds `Alt+E` in `emacs`, `viins`, and `vicmd` only when
+that key is undefined, preserving existing bindings and Zsh's public
+`edit-command-line` widget. With vi, vim, or nvim, a valid final cursor report
+restores the editor cursor position when the command returns to Zsh; an absent
+or invalid report places it at the end.
 
 <CardGroup cols={2}>
   <Card title="Detached mode" href="/detached-mode" icon="code">
     Own the presentation while keeping the same backend.
   </Card>
   <Card title="External editor" href="/reference/external-editor" icon="edit">
-    Edit multiline commands with `Alt+E` and preserve the cursor position in
-    vi, vim, or nvim.
+    Edit multiline commands with `Alt+E` and restore a validated cursor
+    position from vi, vim, or nvim.
   </Card>
 </CardGroup>

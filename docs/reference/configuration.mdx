@@ -10,9 +10,15 @@ presentation environment variables.
 
 Cache root precedence is:
 
-1. `$NBSP_CACHE_DIR`;
-2. `$XDG_CACHE_HOME/nbsp`;
-3. `~/Library/Caches/nbsp`.
+1. `$NBSP_CACHE_DIR`, when the variable is present in the process environment;
+2. `$XDG_CACHE_HOME/nbsp`, when `XDG_CACHE_HOME` is absolute;
+3. `$HOME/Library/Caches/nbsp`.
+
+`NBSP_CACHE_DIR` must be a nonempty absolute path and cannot contain `.` or
+`..` components. Its presence takes precedence even when its value is invalid;
+an invalid override fails cache operations instead of silently falling through.
+A relative `XDG_CACHE_HOME` is ignored in favor of the macOS home-directory
+default.
 
 Override the location before initializing the shell integration:
 
@@ -21,17 +27,37 @@ export NBSP_CACHE_DIR="$HOME/Library/Caches/nbsp"
 eval "$(nbsp init zsh)"
 ```
 
-The integration exports a nonempty `NBSP_CACHE_DIR` so background refreshes
-use the same root.
+When you set a nonempty `NBSP_CACHE_DIR` before initialization, the integration
+exports that value so its background refresh processes use the same root. When
+no override is set, the native precedence above is evaluated by each process.
 
-Clear cache snapshots and abandoned temporary snapshots owned by `nbsp` with:
+Cache access is fail-closed. The selected cache root and its `git` subdirectory
+must be user-owned directories with mode `0700`. Snapshot, temporary, and lock
+files must be user-owned regular files with mode `0600` and one hard link.
+Path components are opened without following symlinks; the only platform
+exceptions are the exact root-owned macOS `/tmp` and `/var` aliases to
+`/private/tmp` and `/private/var`. A mismatched owner, mode, type, link count, or
+symlink causes that cache operation to fail or the snapshot to be ignored.
+
+A successful refresh writes and `fsync()`s a new temporary file before
+replacing the snapshot pathname with `renameat()`. This is atomic pathname
+replacement for concurrent readers. The parent directory is not `fsync()`ed,
+so the documentation does not claim that the directory entry survives every
+power loss or system crash.
+
+Clear recognized snapshot and temporary-snapshot names observed during a
+completed cache-directory scan with:
 
 ```sh
 nbsp cache clear
 ```
 
 Persistent per-repository lock files remain in place so concurrent refreshes
-continue to synchronize on the same inode.
+continue to synchronize on the same inode. The clear operation does not acquire
+those locks. The directory is live while names are collected, so a concurrent
+creation may or may not be observed. If clear removes a temporary pathname used
+by an in-flight refresh, that refresh can fail to publish and a later refresh
+must try again.
 
 ## Git timeout
 
@@ -44,7 +70,8 @@ export NBSP_GIT_TIMEOUT_MS=1500
 The default is 1500 ms. Accepted values range from 50 to 60000 ms. Missing or
 invalid values fall back to the default.
 
-A timeout preserves the last valid snapshot. It does not block foreground
+A timeout does not replace an existing snapshot. The Zsh integration runs the
+worker asynchronously, so waiting for that timeout is not part of foreground
 prompt rendering.
 
 ## Forced refresh
@@ -59,8 +86,9 @@ bypass:
 - the per-repository lock;
 - the configured Git timeout;
 - output limits;
-- cache validation;
-- atomic publication.
+- porcelain and cache validation;
+- the branch-coherence check;
+- temporary-file publication and pathname replacement.
 
 The Zsh integration uses a forced follow-up when a refresh started before a
 foreground command and a post-command snapshot is still needed.

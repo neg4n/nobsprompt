@@ -1,6 +1,6 @@
-.TH NBSP 1 "July 28, 2026" "nbsp 0.1.0" "User Commands"
+.TH NBSP 1 "July 29, 2026" "nbsp 0.1.0" "User Commands"
 .SH NAME
-nbsp \- a lightweight prompt backend and opinionated Zsh prompt
+nbsp \- a native prompt backend and opinionated Zsh prompt
 .SH SYNOPSIS
 .B nbsp init zsh
 [
@@ -70,21 +70,26 @@ nbsp \- a lightweight prompt backend and opinionated Zsh prompt
 .B nbsp cache clear
 .SH DESCRIPTION
 .B nbsp
-collects prompt data for macOS and Zsh without executing Git or Node on the
-foreground rendering path. It exposes those facts through a detached Zsh
-integration and the
+collects prompt data for macOS and Zsh without spawning Git or Node on the
+foreground rendering path. That path still reads the current directory,
+repository metadata, the
+.B NVM_BIN
+environment variable, and a validated status cache. It exposes those facts
+through a detached Zsh integration and the
 .B data
 command, and includes an opinionated one-line prompt for immediate use.
 .PP
-Detached mode provides cached facts, command lifecycle tracking, asynchronous
+Detached mode provides collected facts, command lifecycle tracking, asynchronous
 Git refresh, and redraw callbacks for user-owned prompts without reading or
 writing
 .B PROMPT
 or
 .BR RPROMPT .
 The built-in mode uses the same backend to render a shortened working
-directory, Git status, active NVM version, command duration, background job
-count, and exact nonzero exit status. Failures appear as a compact red status
+directory, Git status, a version derived from
+.BR NVM_BIN ,
+command duration, background job count, and exact nonzero exit status.
+Failures appear as a compact red status
 joined to the prompt character, such as e1% or e127%. Its presentation is
 intentionally fixed.
 .PP
@@ -96,12 +101,20 @@ and
 are active. Dynamic fields are quoted for that exact state. If percent prompt
 expansion is disabled, the built-in renderer emits a plain, uncolored prompt.
 .PP
-The foreground renderer never executes Git. It reads the branch directly from
-the repository metadata and consumes a small cached status snapshot. A
-background refresh obtains porcelain-v2 status and asks ZLE to redraw the
-prompt when ready.
+The
+.B prompt
+and
+.B data
+commands obtain the current directory from
+.BR getcwd (3),
+using its physical absolute pathname rather than the logical spelling in
+.BR PWD .
+If that call fails, they return status 1 without writing prompt or data output.
+They read the branch directly from the resolved Git metadata and consume a
+validated cached status snapshot. A background refresh obtains porcelain-v2
+status and asks ZLE to redraw the prompt when ready.
 .SH SETUP
-Add the following after NVM initialization in
+Add the following in
 .IR ~/.zshrc :
 .PP
 .EX
@@ -119,25 +132,37 @@ Add bounded history and one-level directory ghost text to either mode with:
 .EX
 eval "$(nbsp init zsh --autosuggest)"
 .EE
-.SH EXTERNAL COMMAND EDITING
-If it is not already bound,
-.B Alt+E
-opens the current Zsh editing buffer in an external editor. Save and quit the
-editor to return the edited text to Zsh. The command is not executed until
-Enter is pressed, and multiline buffers are supported.
 .PP
-The editor is selected from
+.B nbsp
+reads
+.B NVM_BIN
+during each collection, so the integration does not have to follow NVM
+initialization. The Node segment reflects the environment when
+.B nbsp
+runs.
+.SH EXTERNAL COMMAND EDITING
+The integration defines the private
+.B nbsp-edit-command-line
+widget and does not replace a public
+.B edit-command-line
+widget. In each of the Emacs, Vi insert, and Vi command keymaps, it binds
+.B Alt+E
+only when that key is undefined. Save and quit the editor to return the edited
+text to Zsh. The command is not executed until Enter is pressed, and multiline
+buffers are supported.
+.PP
+The editor is selected first from the
+.B :zle:edit-command-line
+.B editor
+zstyle, then from
 .BR VISUAL ,
 then
 .BR EDITOR ,
 with
 .B vi
-as the fallback. With vi, vim, or nvim, the Zsh cursor returns to the line and
-character where the editor was closed. Other editors, or an invalid cursor
-report, place it at the end of the edited command.
-.PP
-The binding is installed in the Emacs, Vi insert, and Vi command keymaps
-without replacing existing user or plugin bindings.
+as the fallback. For a whole-buffer edit with vi, vim, or nvim, the Zsh cursor
+returns to the line and character where the editor was closed. Other editors,
+or an absent or invalid cursor report, place it at the end.
 .SH COMMANDS
 .TP
 .B init zsh
@@ -150,43 +175,56 @@ With
 also install the optional autosuggestion engine. It searches in-memory history
 for ordinary commands. Safely parseable
 .B cd
-paths use a bounded asynchronous parent-directory snapshot as the authority,
-with history used only to rank live matches.
+paths use a bounded asynchronous parent-directory snapshot as the candidate
+set, with history used only to rank names in that point-in-time snapshot.
 .TP
 .B prompt
 Render the built-in prompt using supplied command metadata and the current
 directory.
 .TP
 .B data
-Print the versioned, cache-only prompt facts for custom consumers. The default
+Print versioned foreground-collected prompt facts for custom consumers. The
+default
 .B lines
 format is a versioned sequence of percent-encoded key=value records.
 .B --format nul
 prints alternating raw key and value records separated by NUL bytes.
-Neither format executes Git.
+Neither format starts Git or Node, but collection still reads the current
+directory, repository metadata, environment, and validated cache.
 .TP
 .B refresh
-Refresh the Git snapshot for a directory. This is normally asynchronous.
+Perform one synchronous Git snapshot worker operation for a directory. The Zsh
+integration launches this command asynchronously.
 The
 .B --force
 option bypasses only the 250 ms duplicate-refresh debounce; locking, timeout,
-and atomic cache publication are unchanged.
+and pathname-replacement cache publication are unchanged.
 .TP
 .B cache clear
-Remove cache snapshots and abandoned temporary snapshots owned by nbsp.
-Persistent per-repository lock files are left in place so concurrent refreshes
-continue to synchronize on the same inode.
+Snapshot matching cache and temporary names, then remove secure regular files
+named with the per-repository hexadecimal prefix and either
+.B .cache
+or
+.BR .cache.tmp.* .
+Persistent per-repository lock files are left in place. A concurrent refresh
+can lose its temporary file and fail publication, while the preserved lock
+inode keeps later refreshes synchronized.
 .TP
 .B dirs
 Emit the internal NUL-framed snapshot of immediate child directories used by
 autosuggestions. The snapshot is published only with a completion marker and
 is limited to 50 ms, 1,024 entries, and 64 KiB. Nested path suggestions invoke
 this command only for the typed parent; it never recursively traverses from the
-working directory.
+working directory. On timeout the process is terminated by
+.BR SIGALRM ;
+it does not return the ordinary operational-failure status.
 .SH PROMPT BACKEND
 The detached Zsh integration publishes a global associative array named
 .B NBSP_DATA
-after each precmd and asynchronous refresh. It also exposes
+after each successfully parsed, complete schema-2 frame at precmd and after an
+asynchronous refresh notification for the same current directory. Values can
+be unchanged, including when a failed refresh leaves the previous valid cache
+in place. It also exposes
 .B nbsp_data_update_functions
 for custom redraw callbacks and
 .B nbsp_prompt_quote
@@ -200,36 +238,106 @@ settings without changing those options.
 The complete schema, lifecycle, safe parsing rules, and custom prompt examples
 are
 documented in
-.IR detached-mode/index.mdx ,
+.IR detached-mode/data-lifecycle.mdx ,
 installed under the nobsprompt documentation directory.
+.SH GIT COLLECTION
+Foreground collection reads the current branch or abbreviated detached object
+directly from
+.B HEAD
+under the resolved Git directory. The background worker removes
+repository-selecting Git environment variables and invokes:
+.PP
+.EX
+git --no-optional-locks -C ROOT --git-dir=GIT_DIR --work-tree=ROOT status --porcelain=v2 --branch --show-stash --untracked-files=normal --ignore-submodules=dirty --no-renames
+.EE
+.PP
+The counters represent porcelain records. With normal untracked handling, an
+untracked directory can be one record. Submodule worktree dirt is ignored and
+rename detection is disabled.
+.PP
+After collection, the worker reads
+.B HEAD
+again and publishes only when its branch matches the porcelain branch.
+Foreground collection uses cached counters only when the cached branch matches
+the current direct
+.B HEAD
+value. This prevents mixed branch and counter snapshots; a branch can appear
+with an ellipsis while no coherent counter snapshot is available.
 .SH CONFIGURATION
 Presentation is not configurable in built-in mode. Use detached mode to choose
 colors, symbols, layout, segment visibility, or duration thresholds.
 .TP
 .B NBSP_GIT_TIMEOUT_MS
-Background Git timeout in milliseconds. Default: 1500.
+Background Git timeout in milliseconds. Values from 50 through 60,000 are
+accepted; an absent or invalid value uses 1,500.
 .TP
 .B NBSP_CACHE_DIR
-Override the cache root. The default is the XDG cache directory when set,
-otherwise ~/Library/Caches/nbsp.
+Select the cache root when the variable is set. It must be an absolute path; an
+invalid or insecure override fails closed instead of falling back. Cache facts
+then remain unavailable to prompt collection, while cache mutation commands
+fail. When it is unset, an absolute
+.B XDG_CACHE_HOME
+selects
+.BR $XDG_CACHE_HOME/nbsp .
+A relative XDG value is ignored, and the fallback is
+.BR $HOME/Library/Caches/nbsp .
+.PP
+The cache root and its
+.B git
+subdirectory must be owned by the current user with mode 0700. Cache,
+temporary, and lock artifacts must be owned, single-link regular files with
+mode 0600. Symlink path components are rejected apart from the exact macOS
+system aliases for
+.B /tmp
+and
+.BR /var .
+Status publication fsyncs a complete temporary file and renames it over the
+cache pathname. This is atomic pathname replacement, not a guarantee that the
+directory entry survives sudden power loss.
 .TP
 .B NBSP_AUTOSUGGEST_HIGHLIGHT_STYLE
 ZLE region-highlight style for optional ghost text. Default: fg=8.
 .SH AUTOSUGGESTIONS
-The optional engine examines at most the newest 4,096 history entries. Ordinary
-commands use the newest exact, case-sensitive history prefix. For a static
-.B cd PATH
-or
-.BR "cd -- PATH" ,
-the live children of the resolved parent are authoritative. One live match is
-offered directly; when several match, history may rank only a child present in
-that snapshot. History paths missing from that snapshot are never offered.
+The optional engine captures up to 4,096 nonempty commands while examining at
+most 8,192 recent history event numbers at a precmd boundary. Ordinary commands
+use the newest exact, case-sensitive prefix from that snapshot. For one
+supported static operand, the names in one bounded, point-in-time
+parent-directory snapshot define the candidate set. A child can disappear
+before acceptance. One matching name is offered directly; when several match,
+history may rank only a name present in that snapshot. History paths absent
+from the snapshot are never offered as directory candidates.
 .PP
 Path-aware suggestions support relative, absolute, ./, ../, ~/, nested,
-closed-quoted, and backslash-escaped paths. Variables, substitutions, globs,
-operators, unmatched quotes, named directories, multiple operands, and bare
-relative names affected by CDPATH remain ordinary history or Tab-completion
-cases. A failed or incomplete snapshot produces no directory suggestion.
+closed-quoted, and backslash-escaped paths with exactly one nonempty operand.
+Variables, substitutions, globs (including
+.B ^
+and
+.B #
+under
+.BR EXTENDED_GLOB ),
+operators, redirections, unmatched quotes, named directories, and multiple
+operands remain ordinary history or Tab-completion cases. A failed or
+incomplete snapshot produces no directory suggestion.
+.PP
+Explicit dot, dot-dot,
+.BR ./ ,
+and
+.B ../
+operands resolve from the current directory without a
+.B cdpath
+search. For other relative operands with
+.B POSIX_CD
+off, the current directory is scanned when
+.B cdpath
+(the special array corresponding to
+.BR CDPATH )
+has no dot or empty entry, or when such an entry is first. With
+.B POSIX_CD
+on, it is scanned when
+.B cdpath
+is empty or its first entry is dot or empty. Otherwise the engine cannot
+guarantee that the current directory is Zsh's first search root and leaves the
+input to ordinary history or completion.
 .PP
 Right Arrow accepts a suggestion in native Emacs and Vi insert keymaps only
 when its binding was the standard
@@ -242,8 +350,10 @@ Zsh completion and does not accept nbsp ghost text. The
 and
 .B nbsp-autosuggest-toggle
 widgets may be bound explicitly. If zsh-autosuggestions is present, nbsp skips
-or disables its own engine rather than running both. An engine detected after
-initialization produces one warning at the next precmd boundary.
+or disables its own engine rather than running both. A conflict present at
+initialization does not set the initialization guard, so initialization may be
+repeated after removing it. An engine detected later produces one warning at
+the next precmd boundary.
 .SH GIT MARKERS
 .B +
 staged,
@@ -260,8 +370,18 @@ behind, and
 .B *
 stashes.
 .SH EXIT STATUS
-Returns 0 on success, 2 for invalid command-line usage, and 1 for operational,
-serialization, refresh, or cache failures. Optional prompt context failures do
-not prevent a prompt from being rendered.
+Returns 0 on success and on benign refresh no-ops, including a non-repository
+directory, debounce, or a lock already held by another refresh. Returns 2 for
+invalid command-line usage and 1 for operational, serialization, cache, or
+non-timeout Git failures. A Git timeout from
+.B refresh
+returns 124.
+.PP
+A
+.B dirs
+timeout terminates that process with
+.B SIGALRM
+rather than returning 1. Optional missing prompt context, such as an absent or
+invalid status cache, does not by itself prevent prompt rendering.
 .SH AUTHOR
 Igor Klepacki <neg4n@icloud.com>

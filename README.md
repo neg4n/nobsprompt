@@ -8,17 +8,18 @@
 
 # nobsprompt
 
-**nobsprompt**, the No BS prompt, is an extremely lightweight prompt backend
-for macOS and Zsh. It collects useful shell and repository state without
-putting Git or Node on the foreground rendering path.
+**nobsprompt**, the No BS prompt, is a native prompt backend for macOS and Zsh.
+It collects shell and repository state without spawning Git or Node on the
+foreground rendering path. That path still reads the current directory,
+repository metadata, `NVM_BIN`, and a validated status cache.
 
 ```text
 /U/i/D/p/nobsprompt [main +1 ~2 ?3 ^1] [node:22.14.0] [2.4s] [jobs:2] %
 ```
 
 `nbsp` is written in C, links no third-party libraries, requires no daemon or
-special font, and uses an atomic cache for detailed Git status. The current
-optimized arm64 release executable is about 54 KiB. Use the included
+special font, and uses a versioned cache for detailed Git status. Completed
+snapshots are published with atomic pathname replacement. Use the included
 opinionated prompt as-is, or keep the backend and build the prompt yourself.
 
 [Read the documentation](https://nobsprompt.pages.dev) or continue below for
@@ -27,10 +28,11 @@ the shortest route to a working prompt.
 ## Quick start
 
 Requirements: macOS, Zsh 5.8 or newer, a C11 compiler, Git 2.25+, Meson 1.1+,
-and Ninja.
+Ninja, Make, and Python 3.9 or newer. Expect is optional for normal builds; it
+is required to run the four interactive PTY tests.
 
 ```sh
-git clone --depth 1 --filter=blob:none --sparse --no-tags https://github.com/neg4n/nobsprompt.git && cd nobsprompt && git sparse-checkout set src tools tests doc docs
+git clone --depth 1 --filter=blob:none --sparse --no-tags https://github.com/neg4n/nobsprompt.git && cd nobsprompt && git sparse-checkout set src tools tests bench doc docs
 ```
 
 This skips the website project and videos. For the complete repository, use
@@ -45,16 +47,19 @@ improve visibility, but it cannot prove that software is safe.
 make install
 ```
 
-This installs the executable, man page, and Markdown documentation under
+This installs the executable, man page, and MDX documentation sources under
 `~/.local`. The `PREFIX` make variable can override that location when needed.
 
-Put the executable on `PATH`, then choose one integration in `~/.zshrc` after
-NVM initialization:
+Put the executable on `PATH`, then choose one integration in `~/.zshrc`:
 
 | Use | Zsh setup | Presentation |
 | --- | --- | --- |
 | Opinionated prompt | `eval "$(nbsp init zsh --autosuggest)"` | Fixed by `nbsp` |
 | Detached mode | `eval "$(nbsp init zsh --detached --autosuggest)"` | Owned by your Zsh code |
+
+The backend reads `NVM_BIN` during each collection, so this integration does
+not have to follow NVM initialization. The Node segment reflects the value in
+the environment when `nbsp` runs.
 
 For a default local install:
 
@@ -65,8 +70,8 @@ eval "$(nbsp init zsh --autosuggest)"
 
 This enables the recommended fish-like ghost text. Recent history handles
 ordinary commands. For safely parseable `cd` paths, a bounded asynchronous
-snapshot of the typed parent directory is authoritative, so history paths
-absent from that snapshot are not offered as navigation targets.
+snapshot of the typed parent directory defines the candidate set, so history
+paths absent from that snapshot are not offered as navigation targets.
 
 > [!WARNING]
 > Use only one autosuggestion engine. If `zsh-autosuggestions` or another
@@ -76,12 +81,26 @@ absent from that snapshot are not offered as navigation targets.
 
 Each directory worker reads one level of the typed parent—even for nested paths
 such as `~/Desktop/programming/w`—and subsequent matches use binary search over
-the cached snapshot. Right Arrow accepts a suggestion in native Emacs and Vi
-insert keymaps when its existing binding is the standard `forward-char` or
-`vi-forward-char`; custom bindings are never replaced. Tab remains Zsh
-completion and never accepts nobsprompt ghost text. See
-[Autosuggestions](https://nobsprompt.pages.dev/reference/autosuggestions) for
-exact scope and compatibility.
+the point-in-time snapshot. A child can still disappear before acceptance.
+Directory-aware suggestions require exactly one nonempty static operand.
+Relative, absolute, `./`, `../`, `~/`, nested, closed-quoted, and
+backslash-escaped paths are supported. Variables, substitutions, globs
+(including `^` and `#` under
+`EXTENDED_GLOB`), operators, redirections, unmatched quotes, named directories,
+and multiple operands remain history-only or Tab-completion cases.
+
+Explicit `.`, `..`, `./…`, and `../…` operands resolve from `$PWD` without a
+`CDPATH` search. For other relative operands with `POSIX_CD` off, the current
+directory is scanned when Zsh's `cdpath`/`CDPATH` has no `.` or empty entry, or
+when such an entry is first. With `POSIX_CD` on, it is scanned when `cdpath` is
+empty or its first entry is `.` or empty; otherwise nobsprompt cannot guarantee
+that `$PWD` is Zsh's first search root and does not enter directory-aware mode.
+Right Arrow accepts a suggestion in native Emacs and Vi insert keymaps when its
+existing binding is the standard `forward-char` or `vi-forward-char`; custom
+bindings are never replaced. Tab remains Zsh completion and never accepts
+nobsprompt ghost text.
+See [Autosuggestions](https://nobsprompt.pages.dev/reference/autosuggestions)
+for exact scope and compatibility.
 
 Open a new terminal or run `exec zsh`.
 
@@ -90,8 +109,8 @@ Open a new terminal or run `exec zsh`.
 ### Opinionated prompt
 
 The built-in prompt always shows the abbreviated working directory. It adds
-Git state, the active NVM version, commands lasting at least two seconds,
-background jobs, and exact nonzero exit status only when relevant.
+Git state, a version derived from `NVM_BIN`, commands lasting at least two
+seconds, background jobs, and exact nonzero exit status only when relevant.
 
 Its colors, symbols, segments, layout, duration threshold, and prompt character
 are deliberately fixed. See the
@@ -120,10 +139,12 @@ print -r -- "${NBSP_DATA[git_branch]}"
 print -r -- "${NBSP_DATA[node_version]}"
 ```
 
-Register a callback to rebuild your prompt whenever fresh data arrives. Use
-`nbsp_prompt_quote` before inserting dynamic values into Zsh prompt strings;
-it quotes for the current `PROMPT_PERCENT`, `PROMPT_SUBST`, and `PROMPT_BANG`
-settings without changing those options.
+Register a callback to rebuild your prompt after every successfully parsed,
+complete data frame. A callback can therefore run when values are unchanged,
+including after a failed asynchronous refresh leaves the previous valid cache
+in place. Use `nbsp_prompt_quote` before inserting dynamic values into Zsh
+prompt strings; it quotes for the current `PROMPT_PERCENT`, `PROMPT_SUBST`, and
+`PROMPT_BANG` settings without changing those options.
 
 The [detached mode guide](https://nobsprompt.pages.dev/detached-mode) includes
 the complete schema and lifecycle, safe parsing rules, and practical layouts
@@ -132,17 +153,30 @@ prompt substitution, and OSC terminal titles.
 
 ## How it works
 
-Foreground rendering reads directory metadata and a small cache. It never
-starts Git or Node.
+Each foreground `prompt` or `data` collection starts with `getcwd(3)` and uses
+that physical absolute path rather than the logical spelling in `$PWD`. If
+`getcwd` fails, the command exits with status 1 and writes no prompt or data.
+The collector then reads repository metadata, the resolved Git directory's
+`HEAD`, `NVM_BIN`, and any valid cache snapshot. It does not start Git or Node.
 
-The branch is read directly from `.git/HEAD`. Detailed status is produced by
-`git status --porcelain=v2` in a background process, published through an
-atomic cache, and picked up by ZLE on redraw. The first prompt in a repository
-can therefore show a branch before its counters arrive.
+The background refresh runs this command with repository-selecting Git
+environment variables removed:
+
+```text
+git --no-optional-locks -C <root> --git-dir=<git-dir> --work-tree=<root> status --porcelain=v2 --branch --show-stash --untracked-files=normal --ignore-submodules=dirty --no-renames
+```
+
+The counters represent porcelain records. With normal untracked handling, an
+untracked directory can be one record; submodule worktree dirt is ignored and
+rename detection is disabled. Refresh re-reads `HEAD` and publishes only when
+its branch still matches the collected branch. Foreground collection likewise
+uses cached counters only when the cached branch matches the current direct
+`HEAD` value, so a branch can appear with `...` while no coherent counter
+snapshot is available.
 
 The same collector is available to tooling through the versioned
 [`nbsp data` protocol](https://nobsprompt.pages.dev/reference/data-protocol),
-with percent-encoded line records and a lossless NUL format.
+with percent-encoded line records and a raw NUL-framed format.
 
 There is no daemon, database, configuration language, or prompt-format parser.
 The built-in prompt owns presentation; detached consumers receive data and own
@@ -154,45 +188,72 @@ foreground, background refresh, cache, and redraw lifecycle.
 ## Shell behavior
 
 Both modes track command duration, exit status, and job count through Zsh
-hooks. They bind `Alt+E`, when that key is free, to edit the current command in
-`$VISUAL`, `$EDITOR`, or `vi`. Multiline commands are supported, and vi, vim,
-and nvim restore the cursor to the final edited line and character when the
-command returns to Zsh. Other editors place it at the end of the edited
-command. Existing user and plugin bindings are preserved. See the
+hooks. They define the private `nbsp-edit-command-line` widget without
+replacing a public `edit-command-line` widget. On each of the Emacs, Vi insert,
+and Vi command keymaps, `Alt+E` is bound only when that key is undefined.
+Editor selection uses the `:zle:edit-command-line` `editor` zstyle first, then
+`$VISUAL`, `$EDITOR`, or `vi`. Multiline commands are supported. For a
+whole-buffer edit, vi, vim, and nvim restore the cursor from a validated final
+line-and-character report when the command returns to Zsh; if that report is
+absent or invalid, or for other editors, the cursor is placed at the end.
+Existing user and plugin bindings are preserved. See the
 [external editor guide](https://nobsprompt.pages.dev/reference/external-editor)
 for the complete behavior.
 
 ## Operational settings
 
-`NBSP_CACHE_DIR` overrides the cache root. Otherwise `nbsp` uses
-`$XDG_CACHE_HOME/nbsp` or `~/Library/Caches/nbsp`, in that order.
-`nbsp cache clear` removes cache snapshots and abandoned temporary snapshots.
-It leaves the small per-repository lock files in place so concurrent refreshes
-continue to synchronize on the same inode.
+An explicitly set `NBSP_CACHE_DIR` selects the cache root and must be an
+absolute path; an invalid or insecure override fails closed instead of falling
+back. Cache-dependent prompt facts then remain unavailable, while cache
+mutation commands fail. Otherwise an absolute `$XDG_CACHE_HOME` selects
+`$XDG_CACHE_HOME/nbsp`; a relative XDG value is ignored, and the fallback is
+`$HOME/Library/Caches/nbsp`. The cache root and its `git` subdirectory must be
+owned by the current user with mode `0700`. Cache and lock artifacts must be
+owned, single-link regular files with mode `0600`; symlink path components are
+rejected apart from the exact macOS system aliases for `/tmp` and `/var`.
 
-`NBSP_GIT_TIMEOUT_MS` controls the background Git timeout and defaults to
-1500 ms. These operational controls are shared by both modes. The built-in
-prompt has no presentation environment variables; optional ghost text exposes
-only `NBSP_AUTOSUGGEST_HIGHLIGHT_STYLE`.
+Status publication fsyncs a completed temporary file before renaming it over
+the cache pathname. This is atomic pathname replacement, not a claim that the
+directory entry survives sudden power loss. `nbsp cache clear` snapshots the
+matching `.cache` and `.cache.tmp.*` names and removes secure regular files
+with those names, while leaving per-repository lock files in place. A
+concurrent refresh can lose its temporary file and fail publication; the
+preserved lock inode keeps later refreshes synchronized.
+
+`NBSP_GIT_TIMEOUT_MS` controls the background Git timeout. Values from 50
+through 60,000 ms are accepted; an absent or invalid value uses 1,500 ms.
+These operational controls are shared by both modes. The built-in prompt has
+no presentation environment variables; optional ghost text exposes only
+`NBSP_AUTOSUGGEST_HIGHLIGHT_STYLE`.
 
 `nbsp refresh --force` bypasses only the 250 ms duplicate-refresh debounce.
-Locking, the timeout, and atomic cache publication still apply.
+Locking, the timeout, and pathname-replacement cache publication still apply.
+
+Exit status 0 covers success and benign refresh no-ops, including a
+non-repository directory, debounce, or an already-held refresh lock. Status 2
+means invalid command-line usage; status 1 means an operational,
+serialization, cache, or non-timeout Git failure; and a Git timeout from
+`refresh` returns 124. A `dirs` timeout terminates that process with `SIGALRM`
+instead of returning 1.
 
 ## Performance
 
-The foreground path is designed to remain small and predictable. The project
-target is a warm p95 below 5 ms on the development Mac:
+Generate a report for a specific binary and working directory rather than
+relying on an unversioned result:
 
 ```sh
-zsh bench/benchmark.zsh ./build/nbsp
-zsh bench/benchmark.zsh ./build/nbsp data
-zsh bench/benchmark.zsh ./build/nbsp dirs
+zsh bench/benchmark.zsh --output prompt.report ./build/nbsp prompt
+zsh bench/benchmark.zsh --output data.report ./build/nbsp data
+zsh bench/benchmark.zsh --output dirs.report ./build/nbsp dirs
 ```
 
 [Performance and memory](https://nobsprompt.pages.dev/internals/performance)
-contains the measured 54 KiB arm64 release size, latency and memory results,
-the hot-path audit, sanitizer and fuzzing coverage, and the evaluation of more
-complex alternatives.
+documents the measurement method, hot-path audit, verification suite, and
+tradeoffs. Each format-2 report records mandatory binary and harness hashes,
+machine and Zsh details, declared build metadata, workload/repository and cache
+inputs, an unchanged before/after workload digest, exact invocation, warmup and
+sample counts, aggregates, and all sorted samples. No latency or executable
+size result is claimed here without its raw report and build provenance.
 
 ## Development
 
@@ -203,6 +264,10 @@ meson setup build --buildtype=debug
 meson compile -C build
 meson test -C build --print-errorlogs
 ```
+
+With Expect installed, the default `zsh_tests=auto` setup registers four PTY
+tests. Use `-Dzsh_tests=enabled` to require Expect and fail configuration when
+it is missing, or `-Dzsh_tests=disabled` to omit those four tests explicitly.
 
 The documentation content lives in `docs/`. The separate Blume project lives
 in `docs-website/`. Use its pinned Node version and pnpm through Corepack:

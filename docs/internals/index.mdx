@@ -1,6 +1,6 @@
 ---
 title: Internals
-description: Follow the cache-only foreground path, asynchronous Git refresh, atomic publication, and ZLE redraw lifecycle.
+description: Follow the non-spawning foreground collector, asynchronous Git refresh, cache publication, and ZLE redraw lifecycle.
 ---
 
 The main performance rule is simple: foreground prompt rendering never starts
@@ -10,40 +10,60 @@ Git or Node.
 
 At each prompt, `nbsp`:
 
-1. reads the current directory and abbreviates its parent segments;
-2. discovers repository metadata with directory reads;
-3. reads the branch directly from Git metadata;
-4. loads one small validated cache snapshot for detailed Git counters;
-5. derives the active NVM version from `NVM_BIN`;
+1. receives the physical working directory obtained with `getcwd(3)` and
+   abbreviates its parent segments;
+2. canonicalizes that path and inspects `.git` metadata while walking toward
+   the filesystem root, without crossing onto a different device;
+3. reads `HEAD` directly from the resolved Git directory;
+4. loads one bounded, validated cache snapshot for detailed Git counters and
+   accepts those counters only when its branch matches the current `HEAD`;
+5. derives an ASCII version label from `NVM_BIN` without checking a Node
+   process or NVM runtime state;
 6. combines those facts with status, duration, and job count.
 
 The `prompt` and `data` commands share this collector. The first renders the
-fixed Zsh prompt; the second serializes the facts.
+fixed Zsh prompt; the second serializes the facts. The collector can perform
+filesystem and cache I/O, but it does not start Git or Node.
 
 ## Background refresh
 
 Detailed repository state comes from:
 
-```text
-git status --porcelain=v2
+```sh
+git --no-optional-locks -C "$repo_root" \
+  --git-dir="$git_dir" --work-tree="$repo_root" \
+  status --porcelain=v2 --branch --show-stash \
+  --untracked-files=normal --ignore-submodules=dirty --no-renames
 ```
 
-The Zsh integration starts `nbsp refresh` in the background. The refresh:
+The Zsh integration starts `nbsp refresh` in the background. The worker removes
+Git repository-selection variables from its environment, gives Git `/dev/null`
+for standard input and error output, and parses only its bounded standard
+output. The refresh:
 
 - discovers the repository;
 - obtains a per-repository lock;
 - runs Git with a bounded timeout and output cap;
 - parses a complete porcelain-v2 snapshot;
-- publishes it through an atomic cache replacement;
+- publishes it through an atomic pathname replacement in the cache directory;
 - notifies ZLE when the worker completes.
 
-ZLE then reloads the data and redraws the prompt. A failed or timed-out refresh
-preserves the last valid snapshot.
+ZLE then reloads prompt data and redraws. A failed or timed-out refresh does not
+publish a partial snapshot; absent a concurrent cache clear, the last cache
+pathname remains in place.
 
-## First prompt and stale data
+The counters describe porcelain records, not an exhaustive file total. One
+tracked record can increment both staged and modified counters. With
+`--untracked-files=normal`, an untracked directory can be one record rather than
+one record per descendant. Submodule worktree dirt is ignored, while a changed
+commit recorded by the superproject can still appear. Rename detection is
+disabled, so Git can report delete/add records instead of one rename. These
+semantics follow [Git's status options and porcelain-v2 contract](https://git-scm.com/docs/git-status).
 
-The branch can be available before detailed counters because it is read
-directly. On the first prompt in a repository:
+## Branch and counter coherence
+
+The branch can be available before detailed counters because current `HEAD` is
+read separately. A prompt in a repository can therefore contain:
 
 ```text
 git_present=1
@@ -51,30 +71,41 @@ git_valid=0
 git_branch=main
 ```
 
-The next completed refresh publishes the counters and changes `git_valid` to
-`1`.
+`git_valid` changes to `1` only when the cached branch and the branch read for
+that foreground collection are both available and identical. If current branch
+metadata cannot be read, a cached branch label may still be shown, but its
+counters remain invalid. A refresh also rereads the branch after Git exits and
+refuses publication if the branch changed during collection.
+
+This gives one branch-coherent point-in-time snapshot. The worktree or branch
+can change immediately afterward, so it is not a promise of continuously live
+state.
 
 ## The 250 ms debounce
 
-A valid snapshot younger than 250 ms suppresses a duplicate background
-refresh. The check runs before and after obtaining the repository lock.
+A structurally valid snapshot younger than 250 ms suppresses a duplicate
+background refresh. The check runs before and after obtaining the repository
+lock. The foreground collector still refuses its counters if the branch no
+longer matches.
 
 :::warning
 The 250 ms interval is duplicate-refresh debounce, not a normal cache TTL and
-not filesystem invalidation. Normal prompt transitions still schedule a fresh
-porcelain snapshot asynchronously.
+not filesystem invalidation. Each `precmd` requests an asynchronous refresh,
+subject to this debounce and to an already tracked worker for the same
+directory.
 :::
 
 `nbsp refresh --force` bypasses only this debounce. Locking, timeout, cache
-validation, and atomic publication remain unchanged. The Zsh integration uses
-it when a refresh that started before a foreground command must be followed by
-a post-command snapshot.
+validation, and pathname-replacement rules remain unchanged. The Zsh
+integration uses it when a refresh that started before a foreground command
+must be followed by a post-command snapshot.
 
 ## Cache safety
 
 Cache loading rejects snapshots that are malformed, oversized, incomplete,
-from another repository, from another format version, or carry an invalid
-timestamp.
+from another repository, from another format version, or carry a missing,
+zero, or nondecimal timestamp. Known fields must occur exactly once;
+syntactically valid unknown fields are ignored for forward compatibility.
 
 Cache location precedence is:
 
@@ -82,9 +113,25 @@ Cache location precedence is:
 2. `$XDG_CACHE_HOME/nbsp`;
 3. `~/Library/Caches/nbsp`.
 
-`nbsp cache clear` removes cache snapshots and abandoned temporary snapshots.
-It preserves persistent per-repository lock files so a concurrent refresh
-cannot begin using a different lock inode.
+`NBSP_CACHE_DIR` must be an absolute path and is fail-closed: an invalid or
+unusable override does not fall through to another location. `XDG_CACHE_HOME`
+is used only when absolute. The final cache directories must be owned by the
+current user with mode `0700`; cache and lock files must be owned by that user,
+be regular single-link files, and have mode `0600`. Path components are opened
+without following symlinks, apart from the exact root-owned `/tmp` and `/var`
+aliases accepted on macOS.
+
+Writers flush and `fsync` a same-directory temporary file before `renameat(2)`
+replaces the cache pathname. This prevents readers from accepting a partially
+written file, but it is deliberately described as atomic pathname replacement,
+not as a durable filesystem transaction: the containing directory is not
+`fsync`ed.
+
+`nbsp cache clear` removes matching cache and temporary snapshot files that
+pass the secure-file checks. It preserves persistent per-repository lock files
+so a concurrent refresh cannot begin using a different lock inode. A clear can
+also remove an active temporary file, in which case that refresh's publication
+fails cleanly rather than recreating data behind the clear.
 
 ## Redraw and terminal output
 
@@ -105,7 +152,7 @@ this project currently accepts.
 
 <CardGroup cols={2}>
   <Card title="Performance and memory" href="/internals/performance" icon="gauge">
-    Read measured latency, memory, safety coverage, and rejected alternatives.
+    Read the benchmark protocol, safety coverage, and architectural alternatives.
   </Card>
   <Card title="Operational configuration" href="/reference/configuration" icon="settings">
     Configure cache location and the bounded Git timeout.

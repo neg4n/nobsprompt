@@ -1,6 +1,6 @@
 ---
 title: nobsprompt
-description: Run an extremely lightweight macOS and Zsh prompt out of the box, or use its detached backend to build your own without foreground Git or Node work.
+description: Run a native macOS and Zsh prompt out of the box, or use its detached backend to build your own without foreground Git or Node processes.
 ---
 
 `nobsprompt`, the No BS prompt, collects useful shell and repository state
@@ -26,7 +26,8 @@ opinionated prompt as-is, or use detached mode to build your own.
 </Visibility>
 
 `nbsp` is written in C, links no third-party libraries, requires no daemon or
-special font, and keeps detailed Git status in an atomic cache.
+special font, and publishes detailed Git status to its cache by atomic
+pathname replacement.
 
 Start with the [installation guide](/get-started), which recommends bounded
 autosuggestions and explains when to disable them for plugin compatibility.
@@ -37,37 +38,37 @@ autosuggestions and explains when to disable them for plugin compatibility.
     and exact failure status.
   </Card>
   <Card title="Detached mode" href="/detached-mode" icon="code">
-    Keep the fast backend and asynchronous lifecycle while owning every
+    Keep the native backend and asynchronous lifecycle while owning every
     presentation decision.
   </Card>
   <Card title="Autosuggestions" href="/reference/autosuggestions" icon="sparkles">
-    Add recent-history ghost text and live, path-aware directory suggestions
-    without replacing Tab completion.
+    Add recent-history ghost text and bounded, point-in-time directory
+    suggestions without replacing Tab completion.
   </Card>
 </CardGroup>
 
 ## Features
 
 - an abbreviated working directory;
-- a single executable measuring about 54 KiB in the current optimized arm64
-  release build, documented in [Performance and memory](/internals/performance);
 - Git branch and staged, modified, untracked, conflicted, ahead, behind, and
   stash counts;
-- the active NVM version without starting Node;
+- a version derived from `NVM_BIN` without starting Node;
 - command duration, background jobs, and exact exit status;
 - asynchronous Git refresh with ZLE redraw correction;
-- external command editing through `Alt+E`, with multiline buffers and cursor
-  restoration for vi, vim, and nvim;
-- opt-in recent-history ghost text plus live, path-aware `cd` suggestions that
-  reject stale directories without per-key filesystem scans;
+- a private external-command editor widget, bound to `Alt+E` where that key is
+  undefined, with multiline buffers and cursor restoration for vi, vim, and
+  nvim;
+- opt-in recent-history ghost text plus `cd` suggestions built from bounded,
+  asynchronous directory snapshots rather than per-key filesystem scans;
 - a versioned line or NUL-delimited data interface for custom consumers.
 
 ## What it deliberately avoids
 
-There is no daemon, database, format language, plugin system, font requirement,
-or foreground Git process. The opinionated prompt is intentionally fixed.
-Detached mode exists for users who want different colors, symbols, layout,
-segments, thresholds, or OSC wrappers.
+There is no daemon, database, format language, plugin system, or font
+requirement. The `prompt` and `data` paths start no Git or Node process; the Zsh
+integration schedules the separate `refresh` worker asynchronously. The
+opinionated prompt is intentionally fixed. Detached mode exists for users who
+want different colors, symbols, layout, segments, thresholds, or OSC wrappers.
 
 <CardGroup cols={2}>
   <Card title="How it works" href="/internals" icon="activity">

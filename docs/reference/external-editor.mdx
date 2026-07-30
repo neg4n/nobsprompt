@@ -3,32 +3,35 @@ title: External command editor
 description: Edit the current Zsh command with Alt+E while preserving multiline content, bindings, and Vim cursor position.
 ---
 
-Press `Alt+E` to open the current Zsh editing buffer in an external editor.
-Save and close the editor to return the text to the prompt. The command is not
-executed until you press Enter.
+When `Alt+E` is undefined in a supported keymap during initialization, the
+integration binds it to open the current Zsh editing buffer in an external
+editor. Save and close the editor to return the text to the prompt. The command
+is not executed until you press Enter.
 
-Both the opinionated and detached integrations provide this behavior.
+Both the opinionated and detached integrations expose the private
+`nbsp-edit-command-line` widget and conditionally bind it.
 
 :::tip
-With vi, vim, or nvim, the cursor returns to the final line and character where
-you closed the editor. Other editors return it to the end of the edited
-command.
-:::
-
-:::note
-**Video planned: edit a command without executing it**
-
-Show `Alt+E` opening a multiline command in Vim, a small edit, `:wq`, and the
-buffer returning to Zsh with the cursor restored at the edited position.
+With vi, vim, or nvim, a valid cursor report returns the cursor to the final
+line and character where you closed the editor. In a normal invocation, other
+editors return it to the end of the edited command.
 :::
 
 ## Choose an editor
 
 The editor is selected in this order:
 
-1. `$VISUAL`;
-2. `$EDITOR`;
-3. `vi`.
+1. a nonempty `editor` style for the `:zle:edit-command-line` context;
+2. `$VISUAL`;
+3. `$EDITOR`;
+4. `vi`.
+
+The `zstyle` form keeps the executable and arguments as distinct array values:
+
+```zsh
+zstyle :zle:edit-command-line editor nvim --clean
+eval "$(nbsp init zsh)"
+```
 
 Both environment variables can include arguments:
 
@@ -44,14 +47,18 @@ export VISUAL='nano --linenumbers'
 eval "$(nbsp init zsh --detached)"
 ```
 
-The command is split using Zsh's own shell-word parsing rather than executed
-through another shell.
+Values from `VISUAL` and `EDITOR` are split using Zsh's lexical word parser and
+quote removal rather than evaluated by another shell. The implementation then
+delegates buffer editing to the current `edit-command-line` function, loading
+Zsh's standard
+[`edit-command-line`](https://zsh.sourceforge.io/Doc/Release/User-Contributions.html)
+implementation when that function is absent.
 
 ## Buffer behavior
 
 - Empty, single-line, and multiline commands are supported.
 - Saving returns the edited text without executing it.
-- Closing the editor with an error preserves Zsh's editor status behavior.
+- The private widget returns the status from Zsh's `edit-command-line` helper.
 - Existing prompt content and terminal output are not redirected or hidden.
 
 ## Cursor restoration
@@ -60,19 +67,25 @@ With `vi`, `vim`, or `nvim`, `nbsp` records the editor's final line and Unicode
 character column. When the edited text returns to Zsh, the cursor is restored
 to that position when the report is valid.
 
-Other editors, or an invalid cursor report, place the cursor at the end of the
-edited command.
+In a normal invocation, other editors or an invalid cursor report place the
+cursor at the end of the edited command.
 
 The temporary cursor file is removed after editing, including error paths.
 
 ## Existing key bindings
 
-The integration considers the Emacs, Vi insert, and Vi command keymaps. It
-binds `Alt+E` only where that key is currently undefined.
+The integration creates `nbsp-edit-command-line`; it does not replace a public
+`edit-command-line` widget supplied by the user or another plugin. It considers
+the Emacs, Vi insert, and Vi command keymaps and binds `Alt+E` only where that
+key is currently `undefined-key`.
 
 Existing user and plugin bindings are left unchanged.
 
 :::note
-If another plugin already owns `Alt+E`, invoke the `edit-command-line` widget
-through that plugin or bind your preferred key explicitly.
+If another plugin already owns `Alt+E`, keep that binding or bind the private
+widget to another key explicitly:
+
+```zsh
+bindkey '^X^E' nbsp-edit-command-line
+```
 :::

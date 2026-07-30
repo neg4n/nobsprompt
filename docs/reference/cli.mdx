@@ -16,6 +16,8 @@ nbsp --help
 nbsp --version
 ```
 
+`-h` is an alias for `--help`; `-V` is an alias for `--version`.
+
 ## `init zsh`
 
 Print Zsh integration code to standard output.
@@ -25,7 +27,8 @@ eval "$(nbsp init zsh)"
 ```
 
 The default installs the fixed prompt, hooks, asynchronous refresh lifecycle,
-redraw handling, and external editor binding.
+redraw handling, and a private external-editor widget. It binds `Alt+E` only in
+the `emacs`, `viins`, and `vicmd` keymaps where that key is undefined.
 
 ```zsh
 eval "$(nbsp init zsh --detached)"
@@ -36,14 +39,15 @@ eval "$(nbsp init zsh --detached)"
 `nbsp_data_update_functions`, and `nbsp_prompt_quote`.
 
 `--autosuggest` is independent of prompt mode. It adds ordinary history ghost
-text and bounded, live path-aware `cd` suggestions described in
+text and bounded, point-in-time `cd` suggestions described in
 [Autosuggestions](/reference/autosuggestions). Options may appear in either
 order.
 
 ## `prompt`
 
-Render the built-in prompt from the current directory, cache, environment, and
-supplied command metadata.
+Render the built-in prompt from the physical current directory returned by
+`getcwd()`, current HEAD metadata, the validated cache snapshot, `NVM_BIN`, and
+the supplied command metadata.
 
 ```sh
 nbsp prompt --status 1 --duration-ms 2400 --jobs 2
@@ -62,13 +66,17 @@ direct caller must pass matching values for the prompt options that will be in
 effect when Zsh displays the result. With `percent` absent, the renderer emits
 a plain, uncolored prompt instead of percent escapes.
 
-The command never starts Git or Node.
+The command never starts Git or Node, but it is not cache-only: repository
+discovery, HEAD reads, cache validation, and current-directory collection are
+foreground filesystem work. Cache counters are used only when the cached
+branch exactly matches the directly read current branch. If `getcwd()` fails,
+the command exits with status 1 and writes no prompt.
 See [Opinionated prompt](/get-started/opinionated-prompt) for the fixed layout,
 segment visibility, symbols, colors, and failure rendering.
 
 ## `data`
 
-Serialize the same cache-only facts for a custom consumer:
+Serialize the same non-spawning foreground snapshot for a custom consumer:
 
 ```sh
 nbsp data --status 1 --duration-ms 2400 --jobs 2
@@ -78,8 +86,9 @@ nbsp data --status 1 --duration-ms 2400 --jobs 2
 `--format nul` emits alternating raw key and value records separated by NUL
 bytes.
 
-Neither format starts Git. See [Data protocol](/reference/data-protocol) for
-the schema and safe parsing examples.
+Neither format starts Git or Node. As with `prompt`, `getcwd()` failure produces
+no data and status 1. See [Data protocol](/reference/data-protocol) for the
+schema and complete-frame parsing rules.
 
 ## `refresh`
 
@@ -95,34 +104,66 @@ nbsp refresh --cwd "$PWD"
 | `--notify` | Write a newline when the worker completes |
 | `--force` | Bypass only the 250 ms duplicate-refresh debounce |
 
-The Zsh integration normally runs this command asynchronously. `--force` does
-not bypass locking, timeout, validation, or atomic cache publication.
+The Zsh integration normally runs this command asynchronously. After native
+same-filesystem repository discovery, the worker runs the equivalent argument
+vector below with Git-selector environment variables removed:
+
+```text
+git --no-optional-locks -C ROOT --git-dir=GIT_DIR --work-tree=ROOT status \
+  --porcelain=v2 --branch --show-stash --untracked-files=normal \
+  --ignore-submodules=dirty --no-renames
+```
+
+The counters are porcelain-v2 record counts: each ordinary tracked record can
+increment the staged count, modified count, or both; each unmerged record
+increments the conflict count; and each `?` record increments the untracked
+count. With `--untracked-files=normal`, one untracked-directory record can
+represent more than one filesystem path. Dirty submodule worktrees are ignored
+and rename detection is disabled. Ahead, behind, and stash values come from the
+porcelain headers.
+
+Before replacing the cache pathname, `nbsp` reads HEAD again and requires it to
+match the collected branch or detached object label. `--force` does not bypass
+locking, timeout, output and parser limits, this branch-coherence check, cache
+validation, or pathname replacement. `--notify` writes its newline for every
+completed worker outcome, including a benign no-op or an error; it is a
+completion signal, not a success byte.
+
+Repository-discovery failure is a benign no-op for `refresh`: this includes no
+repository and also a nonexistent or unreadable `--cwd`, because the command
+does not distinguish those outcomes. They return status 0 without publishing a
+snapshot.
 
 ## `cache clear`
 
-Remove cache snapshots and abandoned temporary snapshots owned by `nbsp`:
+Remove recognized cache snapshot and temporary-snapshot names present in the
+cache directory scan:
 
 ```sh
 nbsp cache clear
 ```
 
 Persistent per-repository lock files remain in place so concurrent refreshes
-continue to synchronize on the same inode.
+continue to synchronize on the same inode. Clearing does not acquire those
+locks. If a temporary pathname selected by the scan is also in use by an
+in-flight refresh, that refresh can fail to publish.
 
 ## `dirs`
 
-Emit a bounded snapshot of immediate child directories for the Zsh
-autosuggestion worker. For a nested path this is the resolved typed parent, not
-the shell's entire working tree:
+Emit a bounded snapshot of immediate child directories under `--cwd` for the
+Zsh autosuggestion worker. For a nested typed path, the worker passes its
+resolved typed parent rather than scanning the shell's entire working tree:
 
 ```sh
 nbsp dirs --cwd "$PWD" --format nul
 ```
 
 The protocol consists of alternating NUL-delimited keys and values. A consumer
-must ignore the entire snapshot unless it receives `schema_version=1` followed
-by `complete=1`. The command follows directory symlinks, sorts names bytewise,
-and rejects a scan that exceeds 1,024 entries, 64 KiB, or 50 ms. It is an
+must ignore the entire frame unless it is well-formed, starts with
+`schema_version=1`, ends with `complete=1`, and the producer succeeds. The
+command follows directory symlinks, sorts names bytewise, and rejects a scan
+that exceeds 1,024 entries or 64 KiB. A 50 ms timer terminates an overlong scan
+with `SIGALRM`, so a consumer must also reject a partial frame. This is an
 internal, versioned boundary; scripts needing a general file-listing interface
 should use standard filesystem tools.
 
@@ -130,9 +171,13 @@ should use standard filesystem tools.
 
 | Status | Meaning |
 | --- | --- |
-| `0` | Success |
+| `0` | Success, or a documented benign refresh no-op such as no repository, a recent snapshot, or a busy per-repository lock |
 | `1` | Operational, serialization, directory, refresh, or cache failure |
 | `2` | Invalid command-line usage |
+| `124` | `refresh` exceeded `NBSP_GIT_TIMEOUT_MS` while collecting Git status |
 
-Optional prompt context failures do not prevent a prompt from being rendered.
-For example, absence of a repository or active NVM version is normal.
+`dirs` can instead terminate from `SIGALRM`; the numeric status reported by a
+parent shell for that signal is shell- and platform-dependent. Optional prompt
+context failures do not prevent a prompt from being rendered. For example,
+absence of a repository or recognized `NVM_BIN` version is normal, while
+failure to obtain the current directory is not.

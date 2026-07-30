@@ -1,20 +1,12 @@
 ---
 title: Detached mode
-description: Build a custom Zsh prompt from NBSP_DATA while nobsprompt handles fast data collection, asynchronous refresh, and redraw.
+description: Build a custom Zsh prompt from NBSP_DATA while nobsprompt handles non-spawning foreground collection, asynchronous refresh, and redraw.
 ---
 
 Detached mode turns `nbsp` into a prompt-data backend for Zsh. It retains the
-cache-only foreground path, asynchronous Git refresh, command timing, job
-tracking, redraw correction, and external command editing. Your code owns
+non-spawning foreground collector, asynchronous Git refresh, command timing,
+job tracking, redraw requests, and external command editing. Your code owns
 `PROMPT` and `RPROMPT`.
-
-:::note
-**Video planned: one backend, several prompts**
-
-Show the same `NBSP_DATA` values rendered first as the minimal prompt and then
-as two customized layouts. Include a background Git refresh updating counters
-without blocking input.
-:::
 
 Initialize detached mode in `~/.zshrc`:
 
@@ -22,9 +14,10 @@ Initialize detached mode in `~/.zshrc`:
 eval "$(nbsp init zsh --detached --autosuggest)"
 ```
 
-The first mode initialized in a shell wins. Put initialization after NVM setup
-so `node_version` reflects the active version. Omit `--autosuggest` when another
-ghost-text plugin is already active.
+The first prompt mode initialized in a shell wins. `node_version` is derived
+from the value of `NVM_BIN` at each collection, so it follows later `NVM_BIN`
+changes as well as the value present during initialization. Omit
+`--autosuggest` when another ghost-text plugin is already active.
 
 ## Minimal prompt
 
@@ -39,7 +32,7 @@ minimal_prompt() {
   nbsp_prompt_quote "${NBSP_DATA[path]}"
   path=$REPLY
 
-  if [[ ${NBSP_DATA[git_present]} == 1 ]]; then
+  if [[ ${NBSP_DATA[git_present]} == 1 && -n ${NBSP_DATA[git_branch]} ]]; then
     nbsp_prompt_quote "${NBSP_DATA[git_branch]}"
     branch=" [$REPLY]"
   fi
@@ -51,8 +44,10 @@ nbsp_data_update_functions+=(minimal_prompt)
 minimal_prompt
 ```
 
-The final call prepares the initial prompt. The registered callback rebuilds
-it after later data updates, including completed asynchronous Git refreshes.
+The final call prepares a prompt before the first `precmd` data load. The
+registered callback rebuilds it after every later successful, complete data
+frame parse, including reloads requested when an asynchronous Git worker
+finishes. A callback can therefore run even when the values did not change.
 
 :::warning
 Always pass paths, branch names, and other externally derived strings through
@@ -73,16 +68,16 @@ Your prompt code owns:
 
 The backend owns:
 
-- collecting cache-safe prompt facts;
+- collecting prompt facts without starting Git or Node in the foreground;
 - command timing and job count;
 - asynchronous Git refresh;
-- atomic `NBSP_DATA` replacement;
+- complete-frame `NBSP_DATA` replacement;
 - update callbacks and ZLE redraw requests;
 - external command editing.
 
 <CardGroup cols={2}>
   <Card title="Data and lifecycle" href="/detached-mode/data-lifecycle" icon="database">
-    Read the complete schema, first-refresh behavior, escaping rules, and
+    Read the complete schema, refresh lifecycle, escaping rules, and
     callback contract.
   </Card>
   <Card title="Prompt recipes" href="/detached-mode/recipes" icon="layers">

@@ -1,138 +1,204 @@
 ---
 title: Performance and memory
-description: Review measured prompt latency, memory use, safety coverage, applied optimizations, and rejected alternatives.
+description: Reproduce foreground latency measurements and understand the native safety checks, their coverage, and their limits.
 ---
 
-This audit covers the foreground `nbsp prompt` path. The detached
-`nbsp data` backend uses the same collector and can be measured by passing
-`data` as the second argument to `bench/benchmark.zsh`. Git status refresh is
-deliberately asynchronous and is therefore measured for correctness and
-bounded execution rather than included in foreground latency.
+The foreground `nbsp prompt` and `nbsp data` commands use the same collector.
+Git status refresh is deliberately outside that path: Zsh starts `nbsp refresh`
+as a background worker and reloads prompt data after the worker completes.
 
-The optional autosuggestion engine is also outside the default prompt path.
-History lookup runs inside Zsh. A safely parseable `cd` path starts one bounded
-directory worker for its typed parent; the live snapshot prevents stale history
-from becoming a navigation suggestion.
+The repository does not ship a numerical performance baseline. Do not quote a
+latency, binary-size improvement, memory footprint, or instruction-count claim
+without retaining the raw report and enough build and machine metadata to
+reproduce the comparison.
 
-## Measurement snapshot
+## Benchmark protocol
 
-Measurements were taken on July 20, 2026 on Apple Silicon with macOS 26.5,
-Apple Clang 21, Meson 1.11.2, LTO, and a release build. Latency is measured over
-3,000 fresh process invocations. Small differences below roughly 0.02 ms should
-be treated as noise.
+`bench/benchmark.zsh` measures a chosen command with one fresh `nbsp` process
+per sample. Its defaults are 100 warm-up invocations and 1,000 measured
+invocations. For example:
 
-| Build | Non-repository p95 | Warm repository p95 | Binary |
-| --- | ---: | ---: | ---: |
-| Baseline `-O3` + LTO | 1.480 ms | 1.493 ms | 53 KiB |
-| Optimized `-O3` + LTO | 1.439 ms | 1.455 ms | 53 KiB |
-| Optimized for size + LTO | 1.467 ms | not repeated | 55 KiB |
-| Local `-mcpu=native` + LTO | 1.477 ms | not repeated | 53 KiB |
+```sh
+zsh bench/benchmark.zsh \
+  --warmup 100 \
+  --iterations 3000 \
+  --output ./prompt-benchmark.txt \
+  -- ./build/nbsp prompt
+```
 
-The July 28 autosuggestion implementation changed the optimized arm64 binary
-from 54,216 to 54,872 bytes. The later live-path validation and nested-parent
-upgrade increased its embedded Zsh source from 11,606 to 16,892 bytes while the
-optimized executable remained 54,872 bytes. Both binaries occupy the same
-Mach-O segment pages; a bounded build-time LZSS representation prevents source
-size from translating directly into installed size.
+The harness supports `prompt`, `data`, and `dirs`. It performs the requested
+warm-up invocations first, times each measured invocation with Zsh's
+`EPOCHREALTIME`, redirects the command's standard output, and calculates mean,
+minimum, maximum, p50, and p95 from the sorted samples. Percentiles use the
+nearest-rank index. The report also contains every sample as
+`sample_sorted_ms`; those values cannot reconstruct temporal order. Because
+`EPOCHREALTIME` is a wall clock rather than a monotonic clock, the harness
+rejects negative, non-finite, and implausibly large intervals but cannot prevent
+smaller wall-clock adjustments from affecting a result.
 
-On the same development Mac, 3,000 fresh `nbsp dirs` invocations from the
-project root measured 1.495 ms p95. The worker is asynchronous from ZLE and its
-own filesystem work is additionally terminated after 50 ms.
+For `prompt` and `data`, the default representative inputs are status `17`,
+duration `2345` milliseconds, and two jobs. The prompt defaults to the
+`percent` prompt-option mask. `NBSP_BENCH_STATUS`,
+`NBSP_BENCH_DURATION_MS`, `NBSP_BENCH_JOBS`, and
+`NBSP_BENCH_PROMPT_OPTIONS` select different inputs. Iterations, warm-up,
+output, and working directory also have `NBSP_BENCH_ITERATIONS`,
+`NBSP_BENCH_WARMUP`, `NBSP_BENCH_OUTPUT`, and `NBSP_BENCH_CWD` defaults that
+their corresponding command-line flags override.
 
-macOS process accounting for the baseline and optimized release binary:
+Iterations are limited to 100,000 and warm-up invocations to 100,000. The
+harness rejects an output symlink, special file, or pathname/inode that would
+replace the measured binary. It also discards the report if the binary's
+version, size, or required SHA-256 changes during the run.
 
-| Metric | Baseline | Optimized | Change |
-| --- | ---: | ---: | ---: |
-| Maximum resident set | 1,441,792 B | 1,425,408 B | -16,384 B |
-| Peak memory footprint | 983,328 B | 983,328 B | unchanged |
-| Retired instructions | 13,902,164 | 13,730,244 median | about -1.2% |
+Format-2 reports use `key=value` lines. Text values use percent-byte encoding so
+embedded whitespace, newlines, or `=` cannot create records. Numeric fields and
+SHA-256 values remain plain ASCII. Each report records:
 
-The foreground path is now dominated by process creation, dyld, libc startup,
-and Zsh command substitution. Further normal C micro-optimization has little
-room to materially improve the observed wall time.
+- start and end UTC timestamps, `uname` data, OS build, CPU brand when
+  available, hardware model, and Zsh version;
+- the benchmark script's SHA-256 plus the revision and dirty state of the
+  checkout containing that script, when it is a Git repository;
+- the binary's absolute path, reported version, byte size, and mandatory
+  SHA-256;
+- caller-declared binary source revision/dirty state, build type, compiler, and
+  compiler/linker flags, each recorded as `unreported` unless supplied through
+  the corresponding `NBSP_BENCH_*` variable;
+- the working directory, mode, shell-quoted invocation, warm-up count, and
+  measured iteration count;
+- a clean-environment workload repository root, HEAD, and coarse clean/dirty
+  state when applicable;
+- `NVM_BIN`, cache-root inputs, and the effective cache-root candidate;
+- a SHA-256 of a NUL-framed observable workload snapshot captured before the
+  warm-up and again after measurement; the report is discarded if those
+  snapshots differ;
+- the aggregate values and all sorted samples.
 
-## Optimizations applied
+`NBSP_BENCH_SOURCE_REVISION`, `NBSP_BENCH_SOURCE_DIRTY`,
+`NBSP_BENCH_BUILD_TYPE`, `NBSP_BENCH_COMPILER`, `NBSP_BENCH_CFLAGS`, and
+`NBSP_BENCH_LDFLAGS` are declarations by the caller; the harness cannot prove
+that an arbitrary selected binary came from its own checkout or from those
+settings. The workload digest records the collector-visible data (or `dirs`
+frame), not raw cache-file bytes or every filesystem attribute. Power and
+thermal state, competing system load, and temporal sample order are also not
+captured. Record and hold those conditions constant before comparing builds. A
+warm repository and a non-repository directory remain different workloads.
 
-- Repository discovery now walks with bounded stack buffers and performs no
-  heap allocation. Non-repository paths no longer pay for `realpath`.
-- Branch reads use `open`/`read` on a stack buffer instead of allocating a
-  `FILE` stream and a joined path.
-- Warm cache reads use one bounded read and in-place parsing. Percent-decoded
-  repository validation and branch copying allocate no memory.
-- Prompt segments escape directly into one growable output buffer instead of
-  allocating a temporary string for each path, Git, Node, duration, job, and
-  prompt-character segment. The data serializer uses the same collected facts
-  without rendering or prompt escape expansion.
-- NVM version parsing is allocation-free in the foreground renderer.
-- Hidden symbols, dead stripping, `-O3`, and LTO keep the executable small.
-- Autosuggestions reuse the current candidate while the typed prefix still
-  matches. One live directory snapshot is cached by typed parent, sorted once,
-  and queried by binary search; no filesystem syscall occurs on the per-key
-  redraw path.
-- Git remains outside the foreground path, uses `posix_spawnp`, has a hard
-  timeout and output cap, and atomically publishes only complete snapshots.
+## Foreground and asynchronous work
 
-## Memory-safety coverage
+The foreground collector starts neither Git nor Node. It still performs native
+filesystem work: `getcwd(3)` in the CLI, physical-path canonicalization,
+repository metadata discovery, direct `HEAD` reads, bounded cache reads and
+validation, path abbreviation, and `NVM_BIN` parsing. Invoking it through Zsh
+command substitution also starts the `nbsp` process itself.
 
-`sh tests/run_memory_checks.sh` performs three independent passes:
+The optional autosuggestion engine is separate from the prompt collector.
+History lookup runs in Zsh. An eligible directory operand can start one
+asynchronous `nbsp dirs` process for the resolved parent; that worker is bounded
+to 50 milliseconds, 1,024 immediate child-directory records, and 64 KiB of
+framed output. Moving this work off the keypress path does not make it free; it
+changes when and where the work runs.
 
-1. Clang's path-sensitive static analyzer over every production translation
-   unit, followed by AddressSanitizer and UndefinedBehaviorSanitizer with strict libc string
-   checks, stack-use-after-return detection, stack-use-after-scope compiler
-   instrumentation, abort-on-first-error, and the full unit/integration suite.
-2. Native macOS allocator diagnostics with nano malloc disabled, pre- and
-   post-allocation scribbling, guard pages, and a heap check after every
-   allocation operation.
-3. A deterministic ASan+UBSan mutation harness. The default 250,000 iterations
-   mix structured Git/cache/path/NVM seeds with random binary inputs up to
-   16 KiB and exercise status parsing, percent codecs, prompt escaping, path
-   contraction, NVM parsing, numeric parsing, rendering, and buffer growth.
+Implementation choices visible in the current source include:
 
-Integration coverage includes malformed and oversized values, corrupted cache
-files, cache identity validation, lock contention, 16 concurrent refreshes,
-background Git timeout, preservation of last-good data, worktrees, detached
-HEAD, staged/modified/untracked states, hostile `%` branch names, Zsh hook
-idempotence, forced debounce bypass, interactive ZLE redraws, terminal prompt
-wrapper preservation, external-editor buffer and Unicode cursor round trips,
-child file-descriptor isolation, complete stdout/stderr streams, and
-verification that foreground rendering and data output never execute Git.
+- fixed-size buffers for repository discovery and direct `HEAD` reads;
+- a bounded cache file read followed by complete validation and an EOF check;
+- one growable output buffer for prompt rendering, while the data command
+  writes its framed records directly to the selected output stream;
+- allocation-free NVM version extraction;
+- a bounded Git child process with a clean repository-selection environment,
+  output cap, timeout, and complete porcelain-v2 parse before publication;
+- same-directory cache publication by `fsync` of the temporary file followed
+  by atomic pathname replacement;
+- sorted, parent-keyed autosuggestion directory snapshots queried in Zsh
+  without a filesystem syscall on each redraw.
 
-Autosuggestion coverage separately verifies ordinary history, stale-history
-rejection, live ranking for unique and ambiguous nested paths, tilde and quoted
-parents, shell escaping, async snapshot publication, early and late plugin
-conflicts, owned versus foreign `POSTDISPLAY`, mid-buffer suppression, Right
-Arrow acceptance, and preservation of custom bindings.
+These are implementation descriptions, not evidence of a speedup relative to
+an unspecified baseline.
 
-Apple's ASan runtime does not implement LeakSanitizer. Requesting
-`detect_leaks=1` aborts before tests start, so the runner disables only that
-unsupported feature on Darwin and uses the guarded allocator and macOS process
-footprint accounting as complementary coverage.
+## Native safety checks
 
-## More aggressive options
+`sh tests/run_memory_checks.sh` requires Python 3.9 or newer and runs several
+different checks:
 
-The following are intentionally not enabled by default:
+1. The configured analyzer compiler performs path-sensitive static analysis on
+   every production C translation unit, including generated C that embeds both
+   Zsh sources, and analyzer findings fail the run.
+2. A debug build runs the Meson test suite under AddressSanitizer and
+   UndefinedBehaviorSanitizer with abort-on-first-error, strict string checks,
+   and stack-use-after-return detection.
+3. A separate native debug build runs the same selected Meson tests. On Darwin,
+   it additionally enables malloc scribbling, guard edges, and a heap check
+   after every allocation operation.
+4. A deterministic ASan+UBSan mutation harness runs 250,000 iterations by
+   default. It combines valid Git/cache/path/NVM seeds with mutated and random
+   inputs up to 16 KiB, exercises all eight prompt-quoting and rendering option
+   masks, and
+   reaches the Git and cache parsers, codecs, path and NVM helpers, numeric
+   parsing, prompt rendering, and buffer growth.
 
-1. **Persistent Zsh coprocess:** removes nearly all per-prompt process startup
-   and is the most likely route below 0.5 ms. It introduces crash recovery,
-   protocol framing, shell-exit cleanup, and stale-process handling.
-2. **Native Zsh module:** avoids IPC and process startup entirely, but couples
-   releases to Zsh's module ABI and makes distribution and crash isolation much
-   harder.
-3. **Per-shell repository memoization:** can skip parent-directory `stat` calls
-   until `chpwd`, but needs careful invalidation for deleted/replaced worktrees
-   and offers only a small gain while process startup dominates.
-4. **Profile-guided optimization:** may trim a few more instructions, but the
-   native CPU experiment made p95 slightly worse. PGO is unlikely to justify a
-   profile-generation release workflow while startup dominates.
+Interactive Zsh coverage is controlled by the Meson `zsh_tests` feature option:
 
-SQLite, memory-mapped cache files, skipped `fsync`, `-ffast-math`, and a default
-`-mcpu=native` build were rejected. They either add work to a tiny hot path,
-reduce crash consistency, do not apply to this workload, or prevent one binary
-from being safely distributed across supported Macs.
+- `auto` (the default) registers the four Expect-backed tests when `expect` is
+  available and otherwise omits them;
+- `enabled` makes `expect` a required program at setup time;
+- `disabled` does not look for `expect` and omits those tests.
 
-For a machine-local build, `-mcpu=native` remains available explicitly:
+The non-PTY Zsh syntax, data-protocol, and option-isolation tests remain
+registered independently. This matches [Meson's three-state feature-option
+semantics](https://mesonbuild.com/Build-options.html#features).
+
+Standalone Meson setup defaults to `auto`. The comprehensive
+`run_memory_checks.sh` runner instead defaults `NBSP_ZSH_TESTS=enabled`, so
+Expect is required unless the caller explicitly selects `auto` or `disabled`.
+When an unavailable optional suite is omitted, it is not registered; the runner
+does not call that a skipped test.
+
+### Leak-detection boundaries
+
+`NBSP_ASAN_LEAKS=auto|enabled|disabled` controls the memory-check runner's leak
+policy. In `auto`, the runner probes the selected ASan runtime with both a clean
+program and an intentional leak, and requires the leak-specific diagnostic and
+controlled exit status instead of inferring capability only from the operating
+system. The test and fuzz builds are probed separately because they can resolve
+different runtimes. `enabled` still probes and fails when support cannot be
+demonstrated; `disabled` turns leak detection off explicitly. Ambient
+`LSAN_OPTIONS` does not control these checks.
+
+That distinction matters on macOS. [Upstream Clang documents that its macOS
+runtime can enable leak detection](https://clang.llvm.org/docs/AddressSanitizer.html#memory-leak-detection),
+while [Apple documents that Xcode's Address Sanitizer does not detect memory
+leaks](https://developer.apple.com/documentation/xcode/diagnosing-memory-thread-and-crash-issues-early).
+The runner also leaves ASan initialization-order checking off on macOS because
+[upstream Clang marks that option unsupported there](https://clang.llvm.org/docs/AddressSanitizer.html#initialization-order-checking).
+
+Darwin malloc scribbling, guard edges, and repeated heap checks are corruption
+diagnostics, not leak detection. They do not replace LeakSanitizer, and the
+suite does not claim to measure process memory footprint. Passing these checks
+is evidence for the exercised inputs and configurations, not proof of memory
+safety or exhaustive parser coverage.
+
+## Architectural alternatives
+
+The following designs are not enabled by default:
+
+1. **Persistent Zsh coprocess:** avoids starting a new foreground collector for
+   each prompt, but adds framing, crash recovery, shell-exit cleanup, and stale
+   process handling.
+2. **Native Zsh module:** avoids an external foreground process, but runs native
+   code inside the shell and couples distribution to Zsh's module interface.
+3. **Per-shell repository memoization:** can avoid some repeated discovery work,
+   but needs explicit invalidation for changed, deleted, or replaced worktrees.
+4. **Profile-guided optimization:** requires a documented representative
+   workload and retained profiles before any benefit can be claimed.
+
+For a machine-local experiment, compiler-specific CPU tuning can be requested
+explicitly:
 
 ```sh
 meson setup build-native --buildtype=release -Doptimization=3 \
   -Db_lto=true -Dc_args=-mcpu=native
 ```
+
+Such a binary targets the build machine's CPU capabilities and should not be
+treated as a generally distributable artifact without a separate compatibility
+assessment.

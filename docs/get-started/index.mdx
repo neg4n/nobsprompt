@@ -9,21 +9,28 @@ description: Clone, review, build, and install nobsprompt on macOS, configure it
 - Zsh 5.8 or newer;
 - a C11 compiler;
 - Git 2.25 or newer;
+- Make;
 - Meson 1.1 or newer;
-- Ninja.
+- Ninja;
+- Python 3.9 or newer.
+
+Expect is optional for building and installing. With the default
+`zsh_tests=auto` setting, Meson does not register the four PTY-backed
+interactive Zsh tests when Expect is unavailable; `-Dzsh_tests=enabled` makes
+Expect required.
 
 ## Build and install
 
 <Steps>
-  <Step title="Clone only the build inputs">
+  <Step title="Clone source, tests, benchmark, and local docs">
 
   ```sh
-  git clone --depth 1 --filter=blob:none --sparse --no-tags https://github.com/neg4n/nobsprompt.git && cd nobsprompt && git sparse-checkout set src tools tests doc docs
+  git clone --depth 1 --filter=blob:none --sparse --no-tags https://github.com/neg4n/nobsprompt.git && cd nobsprompt && git sparse-checkout set src tools tests bench doc docs
   ```
 
   :::tip
-  This gets the latest native source and local docs without downloading the
-  website project or videos. To get everything instead:
+  This gets the native source, tests, benchmark harness, and local docs without
+  downloading the website project or videos. To get everything instead:
 
   ```sh
   git clone https://github.com/neg4n/nobsprompt.git && cd nobsprompt
@@ -110,8 +117,9 @@ description: Clone, review, build, and install nobsprompt on macOS, configure it
   disables only its autosuggestion engine, and leaves the prompt working.
   :::
 
-  Put initialization after NVM setup so the active `node_version` is detected.
-  The first mode initialized in a shell wins.
+  `NVM_BIN` is read on every prompt or data collection, so NVM initialization
+  order does not determine Node-version detection. The first prompt mode
+  initialized in a shell still wins.
 
   </Step>
   <Step title="Restart Zsh">
@@ -133,7 +141,7 @@ With the default prefix, installation places:
 | --- | --- |
 | Executable | `~/.local/bin/nbsp` |
 | Man page | `~/.local/share/man/man1/nbsp.1` |
-| Markdown documentation | `~/.local/share/doc/nobsprompt` |
+| MDX source documentation | `~/.local/share/doc/nobsprompt` |
 
 Use `man nbsp` for the terminal reference.
 
@@ -147,6 +155,7 @@ Use `man nbsp` for the terminal reference.
     Start with a minimal user-owned prompt backed by `NBSP_DATA`.
   </Card>
   <Card title="Autosuggestions" href="/reference/autosuggestions" icon="sparkles">
-    Learn live-path ranking, limits, acceptance keys, and plugin compatibility.
+    Learn snapshot-backed directory ranking, limits, acceptance keys, and
+    plugin compatibility.
   </Card>
 </CardGroup>

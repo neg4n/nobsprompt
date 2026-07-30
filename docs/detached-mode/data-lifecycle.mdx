@@ -1,13 +1,15 @@
 ---
 title: Data and lifecycle
-description: Reference the complete NBSP_DATA schema, asynchronous update lifecycle, safe prompt escaping, and first-refresh behavior.
+description: Reference the complete NBSP_DATA schema, asynchronous update lifecycle, safe prompt escaping, and refresh behavior.
 ---
 
 ## Update lifecycle
 
-After every `precmd`, detached mode atomically replaces the global `NBSP_DATA`
-associative array with one complete schema. A background Git refresh can later
-replace it again and ask ZLE to redraw.
+At every `precmd`, detached mode asks `nbsp data --format nul` for a framed
+snapshot. It replaces the global `NBSP_DATA` associative array only after the
+producer exits successfully and all 18 required schema fields, the frame
+terminator, and schema version have been validated. A completed background Git
+worker can request another load and a ZLE redraw.
 
 Register prompt functions in `nbsp_data_update_functions`:
 
@@ -20,28 +22,31 @@ nbsp_data_update_functions+=(my_prompt_update)
 my_prompt_update
 ```
 
-Callbacks run only after a complete schema has been parsed. Their output is
-not hidden or redirected.
+Callbacks run after every successful complete-frame parse, even when the new
+values equal the previous values. This includes a reload of the preserved old
+cache after a Git refresh fails. A malformed, incomplete, wrong-version, or
+failed frame leaves the previous `NBSP_DATA` untouched and runs no callbacks.
+Callback output is not hidden or redirected.
 
 ## Data schema
 
 | Key | Meaning |
 | --- | --- |
-| `schema_version` | Data contract version, currently `1` |
+| `schema_version` | Data contract version, currently `2` |
 | `cwd` | Full working directory |
 | `path` | Abbreviated display path |
 | `status` | Previous command's exact exit status |
 | `duration_ms` | Previous command duration in milliseconds |
 | `jobs` | Background job count |
-| `node_version` | Active NVM version, or empty |
-| `git_present` | `1` inside a repository |
-| `git_valid` | `1` when counters came from a valid cache snapshot |
+| `node_version` | A 1-255-byte ASCII label derived from the final `NVM_BIN` component (or its parent when a final `bin` has a preceding component), with one leading `v` removed before a digit; otherwise empty |
+| `git_present` | `1` when native repository discovery succeeds |
+| `git_valid` | `1` when a valid cache snapshot's branch matches the branch read from current Git metadata |
 | `git_branch` | Branch name or short detached commit |
-| `git_updated_ms` | Snapshot wall-clock timestamp in milliseconds |
-| `git_staged` | Staged path count |
-| `git_modified` | Modified path count |
-| `git_untracked` | Untracked path count |
-| `git_conflicted` | Conflicted path count |
+| `git_updated_ms` | Snapshot wall-clock timestamp in milliseconds when `git_valid=1`; otherwise `0` |
+| `git_staged` | Porcelain records with staged changes |
+| `git_modified` | Porcelain records with worktree changes |
+| `git_untracked` | Untracked porcelain records |
+| `git_conflicted` | Unmerged porcelain records |
 | `git_ahead` | Commits ahead of upstream |
 | `git_behind` | Commits behind upstream |
 | `git_stashes` | Stash count |
@@ -64,12 +69,19 @@ Consumers should require a schema version they understand, address records by
 key rather than position, and ignore unknown keys added by a compatible future
 version.
 
-## First repository prompt
+## Repository refresh state
 
-On the first prompt in a repository, `git_present` may be `1` while
-`git_valid` is `0`. The branch can still be read directly from Git metadata,
-while detailed counters remain zero. The asynchronous refresh then publishes
-a complete snapshot and redraws the prompt.
+On a prompt in a repository, `git_present` may be `1` while `git_valid` is `0`.
+When current Git metadata can be read, `git_branch` uses that branch or short
+detached commit and detailed counters remain zero until a branch-matched cache
+snapshot is available. If current branch metadata cannot be read, a cached
+branch label may be exposed for context, but `git_valid` remains `0`.
+
+A successful refresh collects one porcelain-v2 status, rereads current branch
+metadata, and publishes only if both branch values still match. The next
+successful data-frame load can then expose `git_valid=1`. No particular prompt
+is guaranteed to be the first successful refresh: lock contention, timeout,
+Git failure, a branch change, or cache publication failure can defer it.
 
 Use `git_valid` when your presentation needs to distinguish a confirmed zero
 from counters that have not arrived:
@@ -79,6 +91,22 @@ if [[ ${NBSP_DATA[git_valid]} == 0 ]]; then
   git_state=" ..."
 fi
 ```
+
+## Snapshot boundaries
+
+Each `NBSP_DATA` value is a point-in-time observation, not a live filesystem
+view. Files, branches, jobs, and environment state can change immediately after
+collection. Detailed Git counters come from the most recent branch-coherent
+cache snapshot; `git_updated_ms` identifies when that snapshot was collected.
+
+`precmd` performs the regular foreground load and schedules a background
+refresh. If a refresh was already running when a foreground command began, the
+integration schedules a forced post-command refresh after that worker finishes.
+Changing directory stops tracking the old worker's notification, and a
+completion is applied only while the shell is still in the directory from which
+that refresh was started. The detached worker can still finish its cache work.
+These checks prevent a known old-directory result from being applied to the new
+prompt, but they cannot turn the snapshot into a continuously live view.
 
 ## Safe prompt text
 
