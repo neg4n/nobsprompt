@@ -108,6 +108,9 @@ static void test_escape_and_nvm(void) {
     version = nbsp_nvm_version("/unexpected/path with spaces/bin");
     CHECK(version == NULL);
 
+    version = nbsp_nvm_version("/Users/test/.nvm/versions/node/v22.\xc3\xa9/bin");
+    CHECK(version == NULL);
+
     char bytes[256];
     for (unsigned i = 1U; i < 256U; ++i) bytes[i - 1U] = (char) i;
     bytes[255] = '\0';

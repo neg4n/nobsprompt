@@ -1,6 +1,5 @@
 #include "nbsp_util.h"
 
-#include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -306,8 +305,8 @@ bool nbsp_nvm_version_into(const char *nvm_bin, char *out, size_t out_len) {
         component = end;
         while (component > begin && component[-1] != '/') --component;
     }
-    if (component < end && *component == 'v' &&
-        component + 1 < end && isdigit((unsigned char) component[1])) {
+    if (component < end && *component == 'v' && component + 1 < end &&
+        component[1] >= '0' && component[1] <= '9') {
         ++component;
     }
     size_t length = (size_t) (end - component);
@@ -315,7 +314,11 @@ bool nbsp_nvm_version_into(const char *nvm_bin, char *out, size_t out_len) {
     for (const unsigned char *p = (const unsigned char *) component;
          p < (const unsigned char *) end;
          ++p) {
-        if (!(isalnum(*p) || *p == '.' || *p == '-' || *p == '_')) return false;
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+            (*p >= '0' && *p <= '9') || *p == '.' || *p == '-' ||
+            *p == '_')) {
+            return false;
+        }
     }
     memcpy(out, component, length);
     out[length] = '\0';
