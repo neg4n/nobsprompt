@@ -41,7 +41,7 @@ typeset -ra clean_git_command=(
 usage() {
   print -ru2 -- \
     "usage: $0 [--iterations N] [--warmup N] [--output PATH|-] [--cwd PATH]" \
-    "          [--] [nbsp-binary] [prompt|data|dirs]"
+    "          [--] [nbsp-binary] [data|dirs]"
 }
 
 percent_encode() {
@@ -121,7 +121,6 @@ bench_cwd=${NBSP_BENCH_CWD:-$PWD}
 prompt_status=${NBSP_BENCH_STATUS:-17}
 duration_ms=${NBSP_BENCH_DURATION_MS:-2345}
 jobs=${NBSP_BENCH_JOBS:-2}
-prompt_options=${NBSP_BENCH_PROMPT_OPTIONS:-percent}
 
 while (( $# > 0 )); do
   case $1 in
@@ -160,10 +159,10 @@ while (( $# > 0 )); do
 done
 
 binary=${1:-./build/nbsp}
-mode=${2:-prompt}
+mode=${2:-data}
 (( $# <= 2 )) || { usage; exit 2; }
 case $mode in
-  prompt|data|dirs) ;;
+  data|dirs) ;;
   *)
     usage
     exit 2
@@ -229,10 +228,6 @@ fi
   print -ru2 -- 'output path must not be empty'
   exit 2
 }
-[[ $mode != prompt || -n $prompt_options ]] || {
-  print -ru2 -- 'NBSP_BENCH_PROMPT_OPTIONS must not be empty'
-  exit 2
-}
 [[ -d $bench_cwd ]] || {
   print -ru2 -- "benchmark cwd is not a directory: $bench_cwd"
   exit 2
@@ -269,15 +264,6 @@ fi
 
 typeset -a invocation
 case $mode in
-  prompt)
-    invocation=(
-      "$binary" prompt
-      --status "$prompt_status"
-      --duration-ms "$duration_ms"
-      --jobs "$jobs"
-      --prompt-options "$prompt_options"
-    )
-    ;;
   data)
     invocation=(
       "$binary" data
@@ -383,7 +369,7 @@ invocation_text=${(j: :)${(@qq)invocation}}
 
 typeset -a snapshot_invocation
 case $mode in
-  prompt|data)
+  data)
     snapshot_invocation=(
       "$binary" data
       --status "$prompt_status"

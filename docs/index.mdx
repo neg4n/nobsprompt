@@ -3,9 +3,9 @@ title: nobsprompt
 description: Run a native macOS and Zsh prompt out of the box, or use its detached backend to build your own without foreground Git or Node processes.
 ---
 
-`nobsprompt`, the No BS prompt, collects useful shell and repository state
-without putting Git or Node on the foreground rendering path. Use the
-opinionated prompt as-is, or use detached mode to build your own.
+Choose the fixed opinionated prompt, or keep the same asynchronous backend and
+own every presentation decision in Zsh. Either path keeps Git and Node off the
+foreground rendering path.
 
 ```text
 /U/i/D/p/nobsprompt [main +1 ~2 ?3 ^1] [node:22.14.0] [2.4s] [jobs:2] %
@@ -21,13 +21,13 @@ opinionated prompt as-is, or use detached mode to build your own.
 </Visibility>
 
 <Visibility for="agents">
-  The landing-page demo shows nobsprompt reacting to Git state, Node, command
-  timing, background jobs, and failures while keeping the prompt readable.
+  Demo video covers live Git counters, Node from `NVM_BIN`, duration, jobs, and
+  exit status. See Features below for the exact product surface.
 </Visibility>
 
-`nbsp` is written in C, links no third-party libraries, requires no daemon or
-special font, and publishes detailed Git status to its cache by atomic
-pathname replacement.
+The native `nbsp` binary has no third-party library links, no daemon, and no
+font requirement. Detailed Git status is published to a versioned cache with
+atomic pathname replacement.
 
 Start with the [installation guide](/get-started), which recommends bounded
 autosuggestions and explains when to disable them for plugin compatibility.

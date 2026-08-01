@@ -254,7 +254,7 @@ file attributes [file join $fakebin git] -permissions 0755
 
 set nbsp_wrapper [open [file join $fakebin nbsp] w]
 puts $nbsp_wrapper {#!/bin/sh}
-puts $nbsp_wrapper {if [ "$1" = prompt ] && [ "${NBSP_FAIL_PROMPT:-0}" = 1 ]; then exit 1; fi}
+puts $nbsp_wrapper {if [ "$1" = data ] && [ "${NBSP_FAIL_DATA:-0}" = 1 ]; then exit 1; fi}
 puts $nbsp_wrapper {if [ "$1" = refresh ]; then}
 puts $nbsp_wrapper {  printf '%s\n' "$*" >> "$NBSP_REFRESH_LOG"}
 puts $nbsp_wrapper {  case " $* " in *" --force "*) : > "$NBSP_FORCE_LOG" ;; esac}
@@ -274,21 +274,26 @@ send -- {eval "$(nbsp init zsh)"}
 send -- "\r"
 wait_prompt
 
-send -- {typeset -gi test_render_count=0; functions[_nbsp_render_original]=$functions[_nbsp_render]; _nbsp_render() { (( test_render_count++ )); _nbsp_render_original "$@"; }; typeset -g test_prefix=$'%{\e]999;prefix\a%}' test_suffix=$'%{\e]999;suffix\a%}'; PROMPT=${test_prefix}${PROMPT}${test_suffix}; print -ru2 -- SCHEDULER-STDERR-PASS; NBSP_TEST_FD=$_nbsp_refresh_fd /bin/sh -c 'if test -e /dev/fd/"$NBSP_TEST_FD"; then echo FD-LEAK; else echo FD-CLEAN; fi'}
+send -- {typeset -gi test_update_count=0; count_updates() { (( test_update_count++ )); }; nbsp_data_update_functions+=(count_updates); print -ru2 -- SCHEDULER-STDERR-PASS; NBSP_TEST_FD=$_nbsp_refresh_fd /bin/sh -c 'if test -e /dev/fd/"$NBSP_TEST_FD"; then echo FD-LEAK; else echo FD-CLEAN; fi'}
 send -- "\r"
 expect -re {SCHEDULER-STDERR-PASS\r?\n}
 expect -re {FD-CLEAN\r?\n}
 wait_prompt
 
 after 2300
-send -- {refresh_lines=("${(@f)$(<$NBSP_REFRESH_LOG)}"); force_seen=no; [[ -s $NBSP_FORCE_LOG ]] && force_seen=yes; wrapper_seen=no; [[ $PROMPT == ${test_prefix}*${test_suffix} ]] && wrapper_seen=yes; print -r -- CHAIN-render=${test_render_count}-force=${force_seen}-wrapper=${wrapper_seen}-refreshes=${#refresh_lines}}
+send -- {refresh_lines=("${(@f)$(<$NBSP_REFRESH_LOG)}"); force_seen=no; [[ -s $NBSP_FORCE_LOG ]] && force_seen=yes; opinionated_seen=no; [[ $PROMPT == *'%#'* || $PROMPT == *'%F{red}e'* ]] && opinionated_seen=yes; print -r -- CHAIN-updates=${test_update_count}-force=${force_seen}-opinionated=${opinionated_seen}-refreshes=${#refresh_lines}}
 send -- "\r"
-expect -re {CHAIN-render=2-force=yes-wrapper=yes-refreshes=2\r?\n}
+expect -re {CHAIN-updates=*[1-9]*-force=yes-opinionated=yes-refreshes=2\r?\n}
 wait_prompt
 
-send -- {NBSP_FAIL_PROMPT=1; export NBSP_FAIL_PROMPT; _nbsp_render; fallback_seen=no; [[ $PROMPT == ${test_prefix}'> '${test_suffix} ]] && fallback_seen=yes; NBSP_FAIL_PROMPT=0; export NBSP_FAIL_PROMPT; print -r -- FALLBACK-WRAPPER-$fallback_seen}
+send -- {NBSP_FAIL_DATA=1; export NBSP_FAIL_DATA; _nbsp_load_data; load_status=$?; fallback_seen=no; [[ $PROMPT == '> ' ]] && fallback_seen=yes; NBSP_FAIL_DATA=0; export NBSP_FAIL_DATA; print -r -- FALLBACK-DATA-$load_status-$fallback_seen}
 send -- "\r"
-expect -re {FALLBACK-WRAPPER-yes\r?\n}
+expect -re {FALLBACK-DATA-1-no\r?\n}
+wait_prompt
+
+send -- {NBSP_FAIL_DATA=1; export NBSP_FAIL_DATA; false; _nbsp_precmd; fallback_seen=no; [[ $PROMPT == '> ' ]] && fallback_seen=yes; NBSP_FAIL_DATA=0; export NBSP_FAIL_DATA; print -r -- FALLBACK-PRECMD-$fallback_seen}
+send -- "\r"
+expect -re {FALLBACK-PRECMD-yes\r?\n}
 wait_prompt
 finish_shell
 

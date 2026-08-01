@@ -28,7 +28,7 @@ while examining at most 8,192 descending Zsh event numbers. It updates that
 snapshot at each `precmd`, including the newest command when Zsh's history ring
 is full. Ordinary commands search the snapshot for an exact, case-sensitive
 prefix. A chosen candidate can be reused while subsequent input still matches
-it, but all redraw eligibility checks—including the queued-input check—run
+it, but all redraw eligibility checks - including the queued-input check - run
 before either cached reuse or a fresh search.
 
 Safely parseable `cd` paths use a different rule: a validated point-in-time

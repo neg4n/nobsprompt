@@ -22,7 +22,7 @@ if [[ -z ${_NBSP_AUTOSUGGEST_INITIALIZED-} ]]; then
     typeset -g _nbsp_as_highlight=
     typeset -g _nbsp_as_scan_state=empty _nbsp_as_scan_pwd=
     typeset -g _nbsp_as_scan_root= _nbsp_as_scan_key=
-    typeset -g _nbsp_as_executable=${commands[nbsp]-}
+    typeset -g _nbsp_as_executable=${_NBSP_BIN:-${commands[nbsp]-}}
     is-at-least 5.9 && _nbsp_as_highlight_memo=1
 
     _nbsp_as_rebuild_history() {

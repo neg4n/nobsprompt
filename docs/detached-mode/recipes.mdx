@@ -9,6 +9,10 @@ Every recipe assumes detached initialization has already run:
 eval "$(nbsp init zsh --detached)"
 ```
 
+**Registration pattern** (shown after each function): quote dynamic fields with
+`nbsp_prompt_quote`, assign `PROMPT`/`RPROMPT`, append the function to
+`nbsp_data_update_functions`, then call it once so the first draw is immediate.
+
 Use one recipe as your callback, or combine their presentation logic
 deliberately.
 

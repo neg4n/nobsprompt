@@ -10,24 +10,6 @@ nbsp \- a native prompt backend and opinionated Zsh prompt
 .B --autosuggest
 ]
 .br
-.B nbsp prompt
-[
-.B --status
-.I N
-]
-[
-.B --duration-ms
-.I N
-]
-[
-.B --jobs
-.I N
-]
-[
-.B --prompt-options
-.I LIST
-]
-.br
 .B nbsp data
 [
 .B --status
@@ -77,49 +59,59 @@ repository metadata, the
 environment variable, and a validated status cache. It exposes those facts
 through a detached Zsh integration and the
 .B data
-command, and includes an opinionated one-line prompt for immediate use.
-.PP
-Detached mode provides collected facts, command lifecycle tracking, asynchronous
-Git refresh, and redraw callbacks for user-owned prompts without reading or
-writing
+command. The default
+.B init zsh
+mode installs an opinionated one-line Zsh prompt that reads
+.B NBSP_DATA
+(the same data path as detached mode). Detached mode omits that callback so you
+own
 .B PROMPT
-or
+and
 .BR RPROMPT .
-The built-in mode uses the same backend to render a shortened working
-directory, Git status, a version derived from
+.PP
+The opinionated Zsh callback shows a shortened working directory, Git status,
+a version derived from
 .BR NVM_BIN ,
 command duration, background job count, and exact nonzero exit status.
-Failures appear as a compact red status
-joined to the prompt character, such as e1% or e127%. Its presentation is
-intentionally fixed.
-.PP
-The Zsh integration tells the renderer whether
-.BR PROMPT_PERCENT ,
-.BR PROMPT_SUBST ,
-and
-.B PROMPT_BANG
-are active. Dynamic fields are quoted for that exact state. If percent prompt
-expansion is disabled, the built-in renderer emits a plain, uncolored prompt.
+Failures appear as a compact red status joined to the prompt character, such as
+e1% or e127%. Its presentation is intentionally fixed and lives in ordinary
+Zsh you can copy from the documentation.
 .PP
 The
-.B prompt
-and
 .B data
-commands obtain the current directory from
+command obtains the current directory from
 .BR getcwd (3),
 using its physical absolute pathname rather than the logical spelling in
 .BR PWD .
-If that call fails, they return status 1 without writing prompt or data output.
-They read the branch directly from the resolved Git metadata and consume a
+If that call fails, it returns status 1 without writing data output.
+The Zsh integration falls back to a minimal
+.RB `` >\  ''
+prompt when a data frame cannot be loaded in opinionated mode.
+Collection reads the branch from resolved Git metadata and consumes a
 validated cached status snapshot. A background refresh obtains porcelain-v2
 status and asks ZLE to redraw the prompt when ready.
 .SH SETUP
-Add the following in
+Put the install prefix on
+.B PATH
+before running
+.B nbsp init
+(unless you invoke the binary by absolute path), then add the following in
 .IR ~/.zshrc :
 .PP
 .EX
+export PATH="$HOME/.local/bin:$PATH"
 eval "$(nbsp init zsh)"
 .EE
+.PP
+.B init
+embeds
+.B _NBSP_BIN
+as the absolute path of the generating executable so data and refresh hooks
+keep working if
+.B PATH
+is rearranged later. Re-run
+.B init
+after moving or upgrading the install location.
 .PP
 To use the backend for a custom prompt instead, use:
 .PP
@@ -178,13 +170,9 @@ for ordinary commands. Safely parseable
 paths use a bounded asynchronous parent-directory snapshot as the candidate
 set, with history used only to rank names in that point-in-time snapshot.
 .TP
-.B prompt
-Render the built-in prompt using supplied command metadata and the current
-directory.
-.TP
 .B data
-Print versioned foreground-collected prompt facts for custom consumers. The
-default
+Print versioned foreground-collected prompt facts for Zsh and other consumers.
+The default
 .B lines
 format is a versioned sequence of percent-encoded key=value records.
 .B --format nul

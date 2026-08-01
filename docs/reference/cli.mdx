@@ -7,7 +7,6 @@ description: Reference every nbsp command and option, including prompt metadata,
 
 ```text
 nbsp init zsh [--detached] [--autosuggest]
-nbsp prompt [--status N] [--duration-ms N] [--jobs N] [--prompt-options LIST]
 nbsp data [--status N] [--duration-ms N] [--jobs N] [--format lines|nul]
 nbsp refresh [--cwd PATH] [--notify] [--force]
 nbsp dirs [--cwd PATH] [--format nul]
@@ -26,31 +25,34 @@ Print Zsh integration code to standard output.
 eval "$(nbsp init zsh)"
 ```
 
-The default installs the fixed prompt, hooks, asynchronous refresh lifecycle,
-redraw handling, and a private external-editor widget. It binds `Alt+E` only in
-the `emacs`, `viins`, and `vicmd` keymaps where that key is undefined.
+The default installs hooks, asynchronous refresh, redraw handling, a private
+external-editor widget, and the [opinionated Zsh prompt](/get-started/opinionated-prompt)
+(a normal `NBSP_DATA` callback). It binds `Alt+E` only in the `emacs`,
+`viins`, and `vicmd` keymaps where that key is undefined.
+
+Emitted code sets `_NBSP_BIN` to the resolved absolute path of the `nbsp`
+process that ran `init`, so later hooks do not depend on `PATH` order. Re-run
+`init` after moving or upgrading the install location.
 
 ```zsh
 eval "$(nbsp init zsh --detached)"
 ```
 
-`--detached` installs the same data and redraw lifecycle without modifying
-`PROMPT` or `RPROMPT`. It publishes `NBSP_DATA`,
-`nbsp_data_update_functions`, and `nbsp_prompt_quote`.
+`--detached` installs the same data and redraw lifecycle without the bundled
+callback and without modifying `PROMPT` or `RPROMPT`. It publishes
+`NBSP_DATA`, `nbsp_data_update_functions`, and `nbsp_prompt_quote`.
 
 `--autosuggest` is independent of prompt mode. It adds ordinary history ghost
 text and bounded, point-in-time `cd` suggestions described in
 [Autosuggestions](/reference/autosuggestions). Options may appear in either
 order.
 
-## `prompt`
+## `data`
 
-Render the built-in prompt from the physical current directory returned by
-`getcwd()`, current HEAD metadata, the validated cache snapshot, `NVM_BIN`, and
-the supplied command metadata.
+Serialize the non-spawning foreground snapshot for Zsh or other consumers:
 
 ```sh
-nbsp prompt --status 1 --duration-ms 2400 --jobs 2
+nbsp data --status 1 --duration-ms 2400 --jobs 2
 ```
 
 | Option | Meaning |
@@ -58,37 +60,17 @@ nbsp prompt --status 1 --duration-ms 2400 --jobs 2
 | `--status N` | Previous command's exact exit status |
 | `--duration-ms N` | Previous command duration in milliseconds |
 | `--jobs N` | Background job count |
-| `--prompt-options LIST` | `none` or a unique comma-separated subset of `percent`, `subst`, and `bang` |
+| `--format lines\|nul` | Line records (default) or NUL records |
 
-The default is `percent`. The bundled Zsh integration supplies the current
-`PROMPT_PERCENT`, `PROMPT_SUBST`, and `PROMPT_BANG` state automatically. A
-direct caller must pass matching values for the prompt options that will be in
-effect when Zsh displays the result. With `percent` absent, the renderer emits
-a plain, uncolored prompt instead of percent escapes.
+`--format lines` emits percent-encoded `key=value` records. `--format nul`
+emits alternating raw key and value records separated by NUL bytes.
 
-The command never starts Git or Node, but it is not cache-only: repository
-discovery, HEAD reads, cache validation, and current-directory collection are
-foreground filesystem work. Cache counters are used only when the cached
-branch exactly matches the directly read current branch. If `getcwd()` fails,
-the command exits with status 1 and writes no prompt.
-See [Opinionated prompt](/get-started/opinionated-prompt) for the fixed layout,
-segment visibility, symbols, colors, and failure rendering.
-
-## `data`
-
-Serialize the same non-spawning foreground snapshot for a custom consumer:
-
-```sh
-nbsp data --status 1 --duration-ms 2400 --jobs 2
-```
-
-`--format lines` is the default and emits percent-encoded `key=value` records.
-`--format nul` emits alternating raw key and value records separated by NUL
-bytes.
-
-Neither format starts Git or Node. As with `prompt`, `getcwd()` failure produces
-no data and status 1. See [Data protocol](/reference/data-protocol) for the
-schema and complete-frame parsing rules.
+The command never starts Git or Node. It still performs repository discovery,
+HEAD reads, cache validation, and current-directory collection. Cache counters
+are used only when the cached branch matches the current HEAD. If `getcwd()`
+fails, the command exits with status 1 and writes no data. See
+[Data protocol](/reference/data-protocol) for the schema and complete-frame
+parsing rules.
 
 ## `refresh`
 

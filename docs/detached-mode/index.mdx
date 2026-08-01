@@ -19,9 +19,12 @@ from the value of `NVM_BIN` at each collection, so it follows later `NVM_BIN`
 changes as well as the value present during initialization. Omit
 `--autosuggest` when another ghost-text plugin is already active.
 
-## Minimal prompt
+## Start from the real template
 
-Add this to `~/.zshrc`:
+The shipped opinionated prompt is ordinary detached-style Zsh. Read the full
+commented file in [Opinionated prompt](/get-started/opinionated-prompt) and
+adapt it. The minimal example below is only a sketch; the opinionated file is
+the complete educational layout (quoting, git markers, duration, jobs, status).
 
 ```zsh
 eval "$(nbsp init zsh --detached --autosuggest)"

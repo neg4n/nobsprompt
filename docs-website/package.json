@@ -17,9 +17,8 @@
     "docs:check": "ASTRO_TELEMETRY_DISABLED=1 blume check --strict",
     "docs:validate": "blume validate --strict",
     "docs:build": "ASTRO_TELEMETRY_DISABLED=1 blume build",
-    "docs:verify": "node scripts/verify-static-output.mjs",
     "docs:audit": "blume audit --fail-on warning",
-    "docs:ci": "node scripts/brand-assets.mjs --check && node scripts/video-assets.mjs --check && ASTRO_TELEMETRY_DISABLED=1 blume check --strict && blume validate --strict && ASTRO_TELEMETRY_DISABLED=1 blume build && node scripts/verify-static-output.mjs && blume audit --fail-on warning"
+    "docs:ci": "node scripts/brand-assets.mjs --check && node scripts/video-assets.mjs --check && ASTRO_TELEMETRY_DISABLED=1 blume check --strict && blume validate --strict && ASTRO_TELEMETRY_DISABLED=1 blume build && blume audit --fail-on warning"
   },
   "dependencies": {
     "blume": "1.1.3"

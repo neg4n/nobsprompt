@@ -31,7 +31,7 @@ enum nbsp_git_result {
     NBSP_GIT_TIMEOUT = 124,
 };
 
-void nbsp_repo_free(struct nbsp_repo *repo);
+void nbsp_repo_clear(struct nbsp_repo *repo);
 bool nbsp_git_discover(const char *cwd, struct nbsp_repo *out);
 bool nbsp_git_read_branch(const struct nbsp_repo *repo, char *out, size_t out_len);
 bool nbsp_git_parse_status(const char *output, struct nbsp_git_status *status);

@@ -4,7 +4,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,10 +12,6 @@
 #include <unistd.h>
 
 #include "nbsp_util.h"
-
-#ifndef PATH_MAX
-#define PATH_MAX 4096
-#endif
 
 enum cache_dir_result {
     CACHE_DIR_OK,
@@ -32,7 +27,7 @@ static bool normalize_cache_path(const char *base,
         return false;
     }
 
-    char combined[PATH_MAX];
+    char combined[NBSP_PATH_CAP];
     int count = snprintf(combined, sizeof combined, "%s%s", base, suffix);
     if (count <= 0 || (size_t) count >= sizeof combined) {
         return false;
@@ -75,26 +70,30 @@ static bool canonicalize_platform_alias(const char *path,
     const char *component_end = strchr(path + 1U, '/');
     size_t component_len = component_end ?
         (size_t) (component_end - path) : strlen(path);
-    if (component_len < 2U || component_len >= PATH_MAX) {
+    if (component_len < 2U || component_len >= NBSP_PATH_CAP) {
         errno = EINVAL;
         return false;
     }
 
-    char first_component[PATH_MAX];
+    char first_component[NBSP_PATH_CAP];
     memcpy(first_component, path, component_len);
     first_component[component_len] = '\0';
 
     struct stat info;
     if (lstat(first_component, &info) != 0) {
         if (errno != ENOENT) return false;
-        int count = snprintf(out, out_len, "%s", path);
-        if (count <= 0 || (size_t) count >= out_len) errno = ENAMETOOLONG;
-        return count > 0 && (size_t) count < out_len;
+        if (!nbsp_copy_cstr(out, out_len, path)) {
+            errno = ENAMETOOLONG;
+            return false;
+        }
+        return true;
     }
     if (!S_ISLNK(info.st_mode)) {
-        int count = snprintf(out, out_len, "%s", path);
-        if (count <= 0 || (size_t) count >= out_len) errno = ENAMETOOLONG;
-        return count > 0 && (size_t) count < out_len;
+        if (!nbsp_copy_cstr(out, out_len, path)) {
+            errno = ENAMETOOLONG;
+            return false;
+        }
+        return true;
     }
 
     const char *expected_link = NULL;
@@ -112,7 +111,7 @@ static bool canonicalize_platform_alias(const char *path,
         errno = ELOOP;
         return false;
     }
-    char target[PATH_MAX];
+    char target[NBSP_PATH_CAP];
     ssize_t target_len = readlink(first_component, target, sizeof target - 1U);
     if (target_len < 0) return false;
     target[target_len] = '\0';
@@ -128,7 +127,7 @@ static bool select_cache_path(const char *base,
     const char *suffix,
     char *out,
     size_t out_len) {
-    char normalized[PATH_MAX];
+    char normalized[NBSP_PATH_CAP];
     if (!normalize_cache_path(base, suffix, normalized, sizeof normalized)) {
         errno = EINVAL;
         return false;
@@ -168,14 +167,17 @@ static bool secure_regular_file(const struct stat *info) {
 static enum cache_dir_result open_directory_tree(const char *path,
     bool create,
     int *fd_out) {
-    if (!path || path[0] != '/' || strlen(path) >= PATH_MAX || !fd_out) {
+    if (!path || path[0] != '/' || strlen(path) >= NBSP_PATH_CAP || !fd_out) {
         errno = EINVAL;
         return CACHE_DIR_ERROR;
     }
     *fd_out = -1;
 
-    char components[PATH_MAX];
-    (void) snprintf(components, sizeof components, "%s", path + 1U);
+    char components[NBSP_PATH_CAP];
+    if (!nbsp_copy_cstr(components, sizeof components, path + 1U)) {
+        errno = ENAMETOOLONG;
+        return CACHE_DIR_ERROR;
+    }
     char *cursor = components;
     int current_fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (current_fd < 0) return CACHE_DIR_ERROR;
@@ -240,7 +242,7 @@ static enum cache_dir_result open_git_dir(bool create,
     }
     *fd_out = -1;
 
-    char root[PATH_MAX];
+    char root[NBSP_PATH_CAP];
     if (!cache_root(root, sizeof root)) {
         return CACHE_DIR_ERROR;
     }
@@ -318,60 +320,6 @@ static bool cache_name(const char *repo_root,
     return count > 0 && (size_t) count < out_len;
 }
 
-static bool parse_decimal(const char *text, size_t length, uint64_t *out) {
-    if (!text || length == 0U || !out) return false;
-    uint64_t value = 0U;
-    for (size_t i = 0U; i < length; ++i) {
-        unsigned char byte = (unsigned char) text[i];
-        if (byte < '0' || byte > '9') return false;
-        uint64_t digit = (uint64_t) (byte - '0');
-        if (value > (UINT64_MAX - digit) / UINT64_C(10)) return false;
-        value = value * UINT64_C(10) + digit;
-    }
-    *out = value;
-    return true;
-}
-
-static bool parse_unsigned(const char *text, size_t length, unsigned *out) {
-    uint64_t value = 0U;
-    if (!parse_decimal(text, length, &value) || value > UINT_MAX) return false;
-    *out = (unsigned) value;
-    return true;
-}
-
-static int encoded_hex(char value) {
-    if (value >= '0' && value <= '9') return value - '0';
-    if (value >= 'A' && value <= 'F') return value - 'A' + 10;
-    if (value >= 'a' && value <= 'f') return value - 'a' + 10;
-    return -1;
-}
-
-static bool encoded_literal_safe(unsigned char value) {
-    return (value >= 'a' && value <= 'z') ||
-        (value >= 'A' && value <= 'Z') ||
-        (value >= '0' && value <= '9') ||
-        value == '-' || value == '_' || value == '.' || value == '/';
-}
-
-static bool encoded_value_valid(const char *encoded, size_t encoded_len) {
-    if (!encoded) return false;
-    for (size_t i = 0U; i < encoded_len; ++i) {
-        unsigned char value = (unsigned char) encoded[i];
-        if (value == '%') {
-            if (i + 2U >= encoded_len ||
-                encoded_hex(encoded[i + 1U]) < 0 ||
-                encoded_hex(encoded[i + 2U]) < 0 ||
-                (encoded[i + 1U] == '0' && encoded[i + 2U] == '0')) {
-                return false;
-            }
-            i += 2U;
-        } else if (!encoded_literal_safe(value)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static bool branch_value_valid(const char *branch, size_t branch_len) {
     if (!branch || branch_len == 0U) return false;
     for (size_t i = 0U; i < branch_len; ++i) {
@@ -379,61 +327,6 @@ static bool branch_value_valid(const char *branch, size_t branch_len) {
         if (value < 0x20U || value == 0x7fU) return false;
     }
     return true;
-}
-
-static bool percent_decode_into(const char *encoded,
-    size_t encoded_len,
-    char *out,
-    size_t out_len) {
-    if (!encoded || !out || out_len == 0U) {
-        return false;
-    }
-    size_t written = 0U;
-    for (size_t i = 0U; i < encoded_len; ++i) {
-        unsigned char value = (unsigned char) encoded[i];
-        if (value == '%') {
-            if (i + 2U >= encoded_len) return false;
-            int hi = encoded_hex(encoded[i + 1U]);
-            int lo = encoded_hex(encoded[i + 2U]);
-            if (hi < 0 || lo < 0) return false;
-            value = (unsigned char) ((hi << 4) | lo);
-            if (value == 0U) return false;
-            i += 2U;
-        } else if (!encoded_literal_safe(value)) {
-            return false;
-        }
-        if (written + 1U >= out_len) return false;
-        out[written++] = (char) value;
-    }
-    out[written] = '\0';
-    return true;
-}
-
-static bool percent_encoded_equals(const char *encoded,
-    size_t encoded_len,
-    const char *plain) {
-    if (!encoded || !plain) return false;
-    size_t encoded_at = 0U;
-    size_t plain_at = 0U;
-    while (encoded_at < encoded_len) {
-        unsigned char value = (unsigned char) encoded[encoded_at++];
-        if (value == '%') {
-            if (encoded_at + 1U >= encoded_len) return false;
-            int hi = encoded_hex(encoded[encoded_at]);
-            int lo = encoded_hex(encoded[encoded_at + 1U]);
-            if (hi < 0 || lo < 0) return false;
-            value = (unsigned char) ((hi << 4) | lo);
-            if (value == 0U) return false;
-            encoded_at += 2U;
-        } else if (!encoded_literal_safe(value)) {
-            return false;
-        }
-        if (plain[plain_at] == '\0' || (unsigned char) plain[plain_at] != value) {
-            return false;
-        }
-        ++plain_at;
-    }
-    return plain[plain_at] == '\0';
 }
 
 static bool span_equals(const char *text, size_t length, const char *expected) {
@@ -496,39 +389,39 @@ bool nbsp_cache_parse(const char *content,
             valid = span_equals(value, value_len, "2");
         } else if (span_equals(cursor, key_len, "repo")) {
             field = FIELD_REPO;
-            valid = percent_encoded_equals(value, value_len, repo_root);
+            valid = nbsp_percent_encoded_equals(value, value_len, repo_root);
         } else if (span_equals(cursor, key_len, "updated_ms")) {
             field = FIELD_UPDATED;
-            valid = parse_decimal(value, value_len, &parsed.updated_ms) &&
+            valid = nbsp_parse_u64_n(value, value_len, &parsed.updated_ms) &&
                 parsed.updated_ms != 0U;
         } else if (span_equals(cursor, key_len, "branch")) {
             field = FIELD_BRANCH;
-            valid = percent_decode_into(
+            valid = nbsp_percent_decode_into(
                     value, value_len, parsed.branch, sizeof parsed.branch) &&
                 branch_value_valid(parsed.branch, strlen(parsed.branch));
         } else if (span_equals(cursor, key_len, "staged")) {
             field = FIELD_STAGED;
-            valid = parse_unsigned(value, value_len, &parsed.staged);
+            valid = nbsp_parse_uint_n(value, value_len, &parsed.staged);
         } else if (span_equals(cursor, key_len, "modified")) {
             field = FIELD_MODIFIED;
-            valid = parse_unsigned(value, value_len, &parsed.modified);
+            valid = nbsp_parse_uint_n(value, value_len, &parsed.modified);
         } else if (span_equals(cursor, key_len, "untracked")) {
             field = FIELD_UNTRACKED;
-            valid = parse_unsigned(value, value_len, &parsed.untracked);
+            valid = nbsp_parse_uint_n(value, value_len, &parsed.untracked);
         } else if (span_equals(cursor, key_len, "conflicted")) {
             field = FIELD_CONFLICTED;
-            valid = parse_unsigned(value, value_len, &parsed.conflicted);
+            valid = nbsp_parse_uint_n(value, value_len, &parsed.conflicted);
         } else if (span_equals(cursor, key_len, "ahead")) {
             field = FIELD_AHEAD;
-            valid = parse_unsigned(value, value_len, &parsed.ahead);
+            valid = nbsp_parse_uint_n(value, value_len, &parsed.ahead);
         } else if (span_equals(cursor, key_len, "behind")) {
             field = FIELD_BEHIND;
-            valid = parse_unsigned(value, value_len, &parsed.behind);
+            valid = nbsp_parse_uint_n(value, value_len, &parsed.behind);
         } else if (span_equals(cursor, key_len, "stashes")) {
             field = FIELD_STASHES;
-            valid = parse_unsigned(value, value_len, &parsed.stashes);
+            valid = nbsp_parse_uint_n(value, value_len, &parsed.stashes);
         } else {
-            valid = encoded_value_valid(value, value_len);
+            valid = nbsp_percent_validate(value, value_len);
         }
 
         if (!valid) return false;
@@ -551,7 +444,7 @@ bool nbsp_cache_load(const char *repo_root, struct nbsp_git_status *status) {
     }
     memset(status, 0, sizeof *status);
 
-    char dir[PATH_MAX];
+    char dir[NBSP_PATH_CAP];
     int dir_fd = -1;
     if (open_git_dir(false, dir, sizeof dir, &dir_fd) != CACHE_DIR_OK) {
         return false;
@@ -652,7 +545,7 @@ bool nbsp_cache_store(const char *repo_root, const struct nbsp_git_status *statu
     if (branch_len == sizeof status->branch ||
         !branch_value_valid(status->branch, branch_len)) return false;
 
-    char dir[PATH_MAX];
+    char dir[NBSP_PATH_CAP];
     int dir_fd = -1;
     if (open_git_dir(true, dir, sizeof dir, &dir_fd) != CACHE_DIR_OK) {
         return false;
@@ -733,7 +626,7 @@ bool nbsp_cache_store(const char *repo_root, const struct nbsp_git_status *statu
 int nbsp_cache_lock(const char *repo_root) {
     if (!repo_root) return NBSP_CACHE_LOCK_ERROR;
 
-    char dir[PATH_MAX];
+    char dir[NBSP_PATH_CAP];
     int dir_fd = -1;
     if (open_git_dir(true, dir, sizeof dir, &dir_fd) != CACHE_DIR_OK) {
         return NBSP_CACHE_LOCK_ERROR;
@@ -849,7 +742,7 @@ static bool append_artifact_name(char ***names,
 }
 
 int nbsp_cache_clear(void) {
-    char dir[PATH_MAX];
+    char dir[NBSP_PATH_CAP];
     int dir_fd = -1;
     enum cache_dir_result dir_result = open_git_dir(false, dir, sizeof dir, &dir_fd);
     if (dir_result == CACHE_DIR_MISSING) return 0;

@@ -19,12 +19,11 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
   typeset -gi _nbsp_refresh_fd=-1
   typeset -gi _nbsp_refresh_again=0
   typeset -g _nbsp_refresh_pwd=
-  typeset -g _nbsp_prompt_body=
-
-  if [[ $_nbsp_mode == detached ]]; then
-    typeset -gA NBSP_DATA
-    typeset -ga nbsp_data_update_functions
-  fi
+  typeset -gA NBSP_DATA
+  typeset -ga nbsp_data_update_functions
+  # Prefer the absolute path baked in by `nbsp init` so hooks work even when
+  # ~/.local/bin is not on PATH yet (common early in .zshrc).
+  typeset -g _NBSP_BIN=${_NBSP_BIN:-nbsp}
 
   _nbsp_prompt_option_mask() {
     local -i prompt_options=0
@@ -66,45 +65,6 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
       done
     done
     (( substitute )) && REPLY+='}'
-    return 0
-  }
-
-  _nbsp_render() {
-    local -i prompt_option_mask
-    if (( $# )); then
-      prompt_option_mask=$1
-    else
-      _nbsp_prompt_option_mask
-      prompt_option_mask=$REPLY
-    fi
-    emulate -L zsh
-    local rendered old pattern kept_prefix kept_suffix prompt_option_list
-    local -a prompt_options
-    (( prompt_option_mask & 1 )) && prompt_options+=(percent)
-    (( prompt_option_mask & 2 )) && prompt_options+=(subst)
-    (( prompt_option_mask & 4 )) && prompt_options+=(bang)
-    prompt_option_list=${(j:,:)prompt_options}
-    [[ -n $prompt_option_list ]] || prompt_option_list=none
-    rendered=$(command nbsp prompt \
-      --status "$_nbsp_last_status" \
-      --duration-ms "$_nbsp_last_duration_ms" \
-      --jobs "$_nbsp_last_jobs" \
-      --prompt-options "$prompt_option_list")
-    if [[ $? != 0 || -z $rendered ]]; then
-      rendered='> '
-    fi
-    old=$_nbsp_prompt_body
-    if [[ -n $old ]]; then
-      pattern=${(b)old}
-    fi
-    if [[ -n $old && $PROMPT == *${~pattern}* ]]; then
-      kept_prefix=${PROMPT%%${~pattern}*}
-      kept_suffix=${PROMPT#*${~pattern}}
-      PROMPT=${kept_prefix}${rendered}${kept_suffix}
-    else
-      PROMPT=$rendered
-    fi
-    _nbsp_prompt_body=$rendered
     return 0
   }
 
@@ -151,13 +111,14 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
           ;;
         *) ;;
       esac
-    done < <(command nbsp data \
+    done < <(
+      "$_NBSP_BIN" data \
         --status "$_nbsp_last_status" \
         --duration-ms "$_nbsp_last_duration_ms" \
         --jobs "$_nbsp_last_jobs" \
         --format nul
-      local -i frame_status=$?
-      print -rn -- $'\0'"$frame_status"$'\0'
+      integer frame_status=$?
+      printf '\0%s\0' "$frame_status"
     )
     (( valid && frame_complete && count == 18 )) || return 1
     [[ ${next[schema_version]-} == 2 ]] || return 1
@@ -181,8 +142,6 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
   }
 
   _nbsp_refresh_done() {
-    _nbsp_prompt_option_mask
-    local -i prompt_option_mask=$REPLY
     emulate -L zsh
     local fd=$1 ignored refresh_pwd=$_nbsp_refresh_pwd
     local -i refresh_again=$_nbsp_refresh_again
@@ -196,10 +155,10 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
       if (( refresh_again )); then
         _nbsp_schedule_refresh 1
       else
-        if [[ $_nbsp_mode == detached ]]; then
-          _nbsp_load_data && zle reset-prompt 2>/dev/null
-        else
-          _nbsp_render "$prompt_option_mask"
+        if _nbsp_load_data; then
+          zle reset-prompt 2>/dev/null
+        elif (( ${+_NBSP_OWNS_PROMPT} )) && [[ -z ${NBSP_DATA[path]-} ]]; then
+          PROMPT='> '
           zle reset-prompt 2>/dev/null
         fi
       fi
@@ -219,7 +178,7 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
     (( force )) && refresh_args+=(--force)
     _nbsp_refresh_pwd=$PWD
     _nbsp_refresh_again=0
-    exec {raw_fd}< <(command nbsp "${refresh_args[@]}" 2>/dev/null)
+    exec {raw_fd}< <("$_NBSP_BIN" "${refresh_args[@]}" 2>/dev/null)
     if (( $+builtins[sysopen] )) && \
         sysopen -o cloexec -ru _nbsp_refresh_fd -- /dev/fd/$raw_fd 2>/dev/null; then
       { exec {raw_fd}<&- } 2>/dev/null
@@ -241,8 +200,6 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
 
   _nbsp_precmd() {
     local -i last_status=$?
-    _nbsp_prompt_option_mask
-    local -i prompt_option_mask=$REPLY
     emulate -L zsh
     _nbsp_last_status=$last_status
     if (( _nbsp_started_at > 0 )); then
@@ -252,10 +209,10 @@ if [[ -z ${_NBSP_INITIALIZED-} ]]; then
     fi
     _nbsp_started_at=0
     _nbsp_last_jobs=${#jobstates}
-    if [[ $_nbsp_mode == detached ]]; then
-      _nbsp_load_data || :
-    else
-      _nbsp_render "$prompt_option_mask"
+    if ! _nbsp_load_data &&
+        (( ${+_NBSP_OWNS_PROMPT} )) &&
+        [[ -z ${NBSP_DATA[path]-} ]]; then
+      PROMPT='> '
     fi
     _nbsp_schedule_refresh
     return 0

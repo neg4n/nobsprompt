@@ -52,5 +52,3 @@ without depending on platform-specific PNG compression or edge rasterization.
 - Blume discovers `icon.svg` and `apple-touch-icon.png` automatically.
 - The README uses GitHub's supported `<picture>` pattern to select the static
   light or dark variant.
-- `scripts/verify-static-output.mjs` checks the emitted files, favicon links,
-  header markup, and author link after a production build.

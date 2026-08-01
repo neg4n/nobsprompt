@@ -68,7 +68,9 @@ export PATH="$HOME/.local/bin:$PATH"
 eval "$(nbsp init zsh --autosuggest)"
 ```
 
-This enables the recommended fish-like ghost text. Recent history handles
+`PATH` is required so `nbsp init` can run; the generated script pins
+`_NBSP_BIN` to that binary for later hooks. This enables the recommended
+fish-like ghost text. Recent history handles
 ordinary commands. For safely parseable `cd` paths, a bounded asynchronous
 snapshot of the typed parent directory defines the candidate set, so history
 paths absent from that snapshot are not offered as navigation targets.
@@ -79,8 +81,8 @@ paths absent from that snapshot are not offered as navigation targets.
 > `eval "$(nbsp init zsh)"` instead. Nobsprompt detects common conflicts,
 > disables its engine, and leaves the prompt working.
 
-Each directory worker reads one level of the typed parent—even for nested paths
-such as `~/Desktop/programming/w`—and subsequent matches use binary search over
+Each directory worker reads one level of the typed parent - even for nested paths
+such as `~/Desktop/programming/w` - and subsequent matches use binary search over
 the point-in-time snapshot. A child can still disappear before acceptance.
 Directory-aware suggestions require exactly one nonempty static operand.
 Relative, absolute, `./`, `../`, `~/`, nested, closed-quoted, and
@@ -108,18 +110,19 @@ Open a new terminal or run `exec zsh`.
 
 ### Opinionated prompt
 
-The built-in prompt always shows the abbreviated working directory. It adds
-Git state, a version derived from `NVM_BIN`, commands lasting at least two
-seconds, background jobs, and exact nonzero exit status only when relevant.
+The built-in prompt is ordinary Zsh: it loads `NBSP_DATA` and assigns `PROMPT`
+in a commented callback you can read and copy. It always shows the abbreviated
+working directory, and adds Git state, a version derived from `NVM_BIN`,
+commands lasting at least two seconds, background jobs, and exact nonzero exit
+status only when relevant.
 
 Its colors, symbols, segments, layout, duration threshold, and prompt character
-are deliberately fixed. See the
+are deliberately fixed in that file. See the
 [opinionated prompt guide](https://nobsprompt.pages.dev/get-started/opinionated-prompt)
-for its complete behavior.
+for the full source and segment rules.
 
-The integration adapts quoting to the current `PROMPT_PERCENT`, `PROMPT_SUBST`,
-and `PROMPT_BANG` settings without changing them. If `PROMPT_PERCENT` is off,
-it emits the same information as plain, uncolored text.
+Dynamic fields go through `nbsp_prompt_quote` for the current `PROMPT_PERCENT`,
+`PROMPT_SUBST`, and `PROMPT_BANG` settings without changing those options.
 
 ### Detached mode
 
@@ -242,7 +245,6 @@ Generate a report for a specific binary and working directory rather than
 relying on an unversioned result:
 
 ```sh
-zsh bench/benchmark.zsh --output prompt.report ./build/nbsp prompt
 zsh bench/benchmark.zsh --output data.report ./build/nbsp data
 zsh bench/benchmark.zsh --output dirs.report ./build/nbsp dirs
 ```

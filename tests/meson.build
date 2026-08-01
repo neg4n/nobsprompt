@@ -10,7 +10,13 @@ sh = find_program('sh')
 test(
   'cli',
   sh,
-  args: [files('test_cli.sh'), nbsp_exe, zsh_init_source, zsh_autosuggest_source],
+  args: [
+    files('test_cli.sh'),
+    nbsp_exe,
+    zsh_init_source,
+    zsh_opinionated_source,
+    zsh_autosuggest_source,
+  ],
   timeout: 30,
 )
 
@@ -38,6 +44,12 @@ test(
   'zsh-option-isolation',
   zsh,
   args: ['-f', files('test_zsh_options.zsh'), zsh_init_source],
+  timeout: 30,
+)
+test(
+  'zsh-quote-parity',
+  zsh,
+  args: ['-f', files('test_zsh_quote_parity.zsh'), nbsp_exe],
   timeout: 30,
 )
 
@@ -72,8 +84,8 @@ if get_option('fuzzing')
   fuzz_flags = ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
   fuzz_parsers = executable(
     'fuzz-parsers',
-    ['fuzz_parsers.c'] + core_sources,
-    include_directories: src_inc,
+    'fuzz_parsers.c',
+    dependencies: core_dep,
     c_args: fuzz_flags,
     link_args: fuzz_flags + dead_strip_args,
   )

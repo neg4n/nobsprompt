@@ -2,7 +2,6 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
@@ -16,13 +15,9 @@
 
 #include "nbsp_util.h"
 
-#ifndef PATH_MAX
-#define PATH_MAX 4096
-#endif
-
 extern char **environ;
 
-void nbsp_repo_free(struct nbsp_repo *repo) {
+void nbsp_repo_clear(struct nbsp_repo *repo) {
     if (repo) {
         repo->root[0] = '\0';
         repo->git_dir[0] = '\0';
@@ -89,27 +84,26 @@ static bool resolve_git_file(const char *worktree,
     const char *git_file,
     char *out,
     size_t out_len) {
-    char line[PATH_MAX];
+    char line[NBSP_PATH_CAP];
     if (!read_first_line(git_file, line, sizeof line) || strncmp(line, "gitdir: ", 8U) != 0) {
         return false;
     }
     const char *value = line + 8U;
     if (*value == '\0') return false;
-    char candidate[PATH_MAX];
-    int count = value[0] == '/'
-        ? snprintf(candidate, sizeof candidate, "%s", value)
-        : snprintf(candidate, sizeof candidate, "%s/%s", worktree, value);
-    if (count < 0 || (size_t) count >= sizeof candidate) {
-        return false;
+    char candidate[NBSP_PATH_CAP];
+    if (value[0] == '/') {
+        if (!nbsp_copy_cstr(candidate, sizeof candidate, value)) return false;
+    } else {
+        int count = snprintf(candidate, sizeof candidate, "%s/%s", worktree, value);
+        if (count < 0 || (size_t) count >= sizeof candidate) return false;
     }
-    char resolved[PATH_MAX];
+    char resolved[NBSP_PATH_CAP];
     struct stat info;
     if (!realpath(candidate, resolved) || stat(resolved, &info) != 0 ||
         !S_ISDIR(info.st_mode)) {
         return false;
     }
-    count = snprintf(out, out_len, "%s", resolved);
-    return count >= 0 && (size_t) count < out_len;
+    return nbsp_copy_cstr(out, out_len, resolved);
 }
 
 bool nbsp_git_discover(const char *cwd, struct nbsp_repo *out) {
@@ -119,7 +113,7 @@ bool nbsp_git_discover(const char *cwd, struct nbsp_repo *out) {
     out->root[0] = '\0';
     out->git_dir[0] = '\0';
 
-    char current[PATH_MAX];
+    char current[NBSP_PATH_CAP];
     struct stat cwd_info;
     if (!realpath(cwd, current) || stat(current, &cwd_info) != 0 ||
         !S_ISDIR(cwd_info.st_mode)) {
@@ -133,7 +127,7 @@ bool nbsp_git_discover(const char *cwd, struct nbsp_repo *out) {
             current_info.st_dev != start_device) {
             return false;
         }
-        char git_path[PATH_MAX];
+        char git_path[NBSP_PATH_CAP];
         int count = snprintf(git_path, sizeof git_path, "%s%s.git",
             current,
             strcmp(current, "/") == 0 ? "" : "/");
@@ -148,17 +142,14 @@ bool nbsp_git_discover(const char *cwd, struct nbsp_repo *out) {
             }
             bool git_dir_ok = false;
             if (S_ISDIR(info.st_mode)) {
-                char resolved[PATH_MAX];
+                char resolved[NBSP_PATH_CAP];
                 if (!realpath(git_path, resolved)) return false;
-                count = snprintf(out->git_dir, sizeof out->git_dir, "%s", resolved);
-                git_dir_ok = count >= 0 && (size_t) count < sizeof out->git_dir;
+                git_dir_ok = nbsp_copy_cstr(out->git_dir, sizeof out->git_dir, resolved);
             } else if (S_ISREG(info.st_mode)) {
                 git_dir_ok = resolve_git_file(current, git_path, out->git_dir, sizeof out->git_dir);
             }
             if (!git_dir_ok) return false;
-            count = snprintf(out->root, sizeof out->root, "%s", current);
-            if (count < 0 || (size_t) count >= sizeof out->root) return false;
-            return true;
+            return nbsp_copy_cstr(out->root, sizeof out->root, current);
         }
         if (errno != ENOENT && errno != ENOTDIR) {
             return false;
@@ -198,7 +189,7 @@ bool nbsp_git_read_branch(const struct nbsp_repo *repo, char *out, size_t out_le
     if (!repo || repo->git_dir[0] == '\0' || !out || out_len == 0U) {
         return false;
     }
-    char head_path[PATH_MAX];
+    char head_path[NBSP_PATH_CAP];
     int count = snprintf(head_path, sizeof head_path, "%s/HEAD", repo->git_dir);
     if (count < 0 || (size_t) count >= sizeof head_path) return false;
     struct stat head_info;
@@ -235,20 +226,6 @@ bool nbsp_git_read_branch(const struct nbsp_repo *repo, char *out, size_t out_le
     return true;
 }
 
-static bool parse_unsigned_field(const char *text, size_t length, unsigned *out) {
-    if (!text || length == 0U || !out) return false;
-    unsigned value = 0U;
-    for (size_t i = 0U; i < length; ++i) {
-        unsigned char byte = (unsigned char) text[i];
-        if (byte < '0' || byte > '9') return false;
-        unsigned digit = (unsigned) (byte - (unsigned char) '0');
-        if (value > (UINT_MAX - digit) / 10U) return false;
-        value = value * 10U + digit;
-    }
-    *out = value;
-    return true;
-}
-
 static bool parse_ahead_behind(const char *value, unsigned *ahead, unsigned *behind) {
     if (!value || value[0] != '+') return false;
     const char *space = strchr(value, ' ');
@@ -256,8 +233,8 @@ static bool parse_ahead_behind(const char *value, unsigned *ahead, unsigned *beh
         strchr(space + 1, ' ')) {
         return false;
     }
-    return parse_unsigned_field(value + 1, (size_t) (space - value - 1), ahead) &&
-        parse_unsigned_field(space + 2, strlen(space + 2), behind);
+    return nbsp_parse_uint_n(value + 1, (size_t) (space - value - 1), ahead) &&
+        nbsp_parse_uint_n(space + 2, strlen(space + 2), behind);
 }
 
 static bool take_record_field(const char **cursor, const char **field, size_t *length) {
@@ -349,7 +326,7 @@ static bool parse_tracked_record(const char *line, struct nbsp_git_status *statu
             return false;
         }
         unsigned score = 0U;
-        if (!parse_unsigned_field(fields[7] + 1U, lengths[7] - 1U, &score) ||
+        if (!nbsp_parse_uint_n(fields[7] + 1U, lengths[7] - 1U, &score) ||
             score > 100U) {
             return false;
         }
@@ -454,7 +431,7 @@ bool nbsp_git_parse_status(const char *output, struct nbsp_git_status *status) {
             } else if (strncmp(line, "# stash ", 8U) == 0) {
                 const char *value = line + 8U;
                 ok = ++stash_headers == 1U &&
-                    parse_unsigned_field(value, strlen(value), &parsed.stashes) &&
+                    nbsp_parse_uint_n(value, strlen(value), &parsed.stashes) &&
                     parsed.stashes != 0U;
             } else {
                 ok = valid_optional_header(line);
@@ -752,14 +729,13 @@ int nbsp_git_collect(const struct nbsp_repo *repo,
     }
 
     char root_arg[sizeof repo->root];
-    int root_count = snprintf(root_arg, sizeof root_arg, "%s", repo->root);
     char git_dir_arg[sizeof repo->git_dir + sizeof "--git-dir="];
     int git_dir_count = snprintf(
         git_dir_arg, sizeof git_dir_arg, "--git-dir=%s", repo->git_dir);
     char work_tree_arg[sizeof repo->root + sizeof "--work-tree="];
     int work_tree_count = snprintf(
         work_tree_arg, sizeof work_tree_arg, "--work-tree=%s", repo->root);
-    if (root_count < 0 || (size_t) root_count >= sizeof root_arg ||
+    if (!nbsp_copy_cstr(root_arg, sizeof root_arg, repo->root) ||
         git_dir_count < 0 || (size_t) git_dir_count >= sizeof git_dir_arg ||
         work_tree_count < 0 || (size_t) work_tree_count >= sizeof work_tree_arg) {
         free(clean_environment);

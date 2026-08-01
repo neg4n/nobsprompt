@@ -1,6 +1,7 @@
 #include "nbsp_util.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -193,9 +194,16 @@ bool nbsp_path_abbreviate_into(const char *cwd, char *out, size_t out_len) {
     return true;
 }
 
-char *nbsp_path_abbreviate(const char *cwd) {
-    char path[NBSP_PATH_CAP];
-    return nbsp_path_abbreviate_into(cwd, path, sizeof path) ? nbsp_strdup(path) : NULL;
+bool nbsp_copy_cstr(char *dst, size_t dst_len, const char *src) {
+    if (!dst || dst_len == 0U || !src) {
+        return false;
+    }
+    size_t len = strlen(src);
+    if (len >= dst_len) {
+        return false;
+    }
+    memcpy(dst, src, len + 1U);
+    return true;
 }
 
 bool nbsp_prompt_quote(struct nbsp_buf *buf, const char *text, unsigned options) {
@@ -226,11 +234,40 @@ bool nbsp_prompt_quote(struct nbsp_buf *buf, const char *text, unsigned options)
     return !substitute || nbsp_buf_append_char(buf, '}');
 }
 
-static bool percent_safe(unsigned char value) {
+static int hex_nibble(char value) {
+    if (value >= '0' && value <= '9') return value - '0';
+    if (value >= 'A' && value <= 'F') return value - 'A' + 10;
+    if (value >= 'a' && value <= 'f') return value - 'a' + 10;
+    return -1;
+}
+
+static bool percent_unreserved(unsigned char value) {
     return (value >= (unsigned char) 'A' && value <= (unsigned char) 'Z') ||
         (value >= (unsigned char) 'a' && value <= (unsigned char) 'z') ||
         (value >= (unsigned char) '0' && value <= (unsigned char) '9') ||
         value == '-' || value == '_' || value == '.' || value == '/';
+}
+
+static bool percent_next(const char *encoded,
+    size_t encoded_len,
+    size_t *at,
+    unsigned char *out) {
+    if (!encoded || !at || !out || *at >= encoded_len) return false;
+    unsigned char value = (unsigned char) encoded[*at];
+    ++*at;
+    if (value == '%') {
+        if (*at + 1U >= encoded_len) return false;
+        int hi = hex_nibble(encoded[*at]);
+        int lo = hex_nibble(encoded[*at + 1U]);
+        if (hi < 0 || lo < 0) return false;
+        value = (unsigned char) ((hi << 4) | lo);
+        if (value == 0U) return false;
+        *at += 2U;
+    } else if (!percent_unreserved(value)) {
+        return false;
+    }
+    *out = value;
+    return true;
 }
 
 char *nbsp_percent_encode(const char *text) {
@@ -241,7 +278,7 @@ char *nbsp_percent_encode(const char *text) {
     struct nbsp_buf buf;
     nbsp_buf_init(&buf);
     for (const unsigned char *p = (const unsigned char *) text; *p; ++p) {
-        if (percent_safe(*p)) {
+        if (percent_unreserved(*p)) {
             if (!nbsp_buf_append_char(&buf, (char) *p)) {
                 nbsp_buf_free(&buf);
                 return NULL;
@@ -257,39 +294,50 @@ char *nbsp_percent_encode(const char *text) {
     return nbsp_buf_take(&buf);
 }
 
-static int hex_value(char value) {
-    if (value >= '0' && value <= '9') return value - '0';
-    if (value >= 'A' && value <= 'F') return value - 'A' + 10;
-    if (value >= 'a' && value <= 'f') return value - 'a' + 10;
-    return -1;
+bool nbsp_percent_decode_into(const char *encoded,
+    size_t encoded_len,
+    char *out,
+    size_t out_len) {
+    if (!encoded || !out || out_len == 0U) {
+        return false;
+    }
+    size_t at = 0U;
+    size_t written = 0U;
+    while (at < encoded_len) {
+        unsigned char value = 0U;
+        if (!percent_next(encoded, encoded_len, &at, &value)) return false;
+        if (written + 1U >= out_len) return false;
+        out[written++] = (char) value;
+    }
+    out[written] = '\0';
+    return true;
 }
 
-char *nbsp_percent_decode(const char *text) {
-    if (!text) {
-        return NULL;
-    }
-    struct nbsp_buf buf;
-    nbsp_buf_init(&buf);
-    for (size_t i = 0; text[i]; ++i) {
-        if (text[i] == '%') {
-            int hi = hex_value(text[i + 1U]);
-            int lo = text[i + 1U] ? hex_value(text[i + 2U]) : -1;
-            if (hi < 0 || lo < 0) {
-                nbsp_buf_free(&buf);
-                return NULL;
-            }
-            char value = (char) ((hi << 4) | lo);
-            if (value == '\0' || !nbsp_buf_append_char(&buf, value)) {
-                nbsp_buf_free(&buf);
-                return NULL;
-            }
-            i += 2U;
-        } else if (!nbsp_buf_append_char(&buf, text[i])) {
-            nbsp_buf_free(&buf);
-            return NULL;
+bool nbsp_percent_encoded_equals(const char *encoded,
+    size_t encoded_len,
+    const char *plain) {
+    if (!encoded || !plain) return false;
+    size_t at = 0U;
+    size_t plain_at = 0U;
+    while (at < encoded_len) {
+        unsigned char value = 0U;
+        if (!percent_next(encoded, encoded_len, &at, &value)) return false;
+        if (plain[plain_at] == '\0' || (unsigned char) plain[plain_at] != value) {
+            return false;
         }
+        ++plain_at;
     }
-    return nbsp_buf_take(&buf);
+    return plain[plain_at] == '\0';
+}
+
+bool nbsp_percent_validate(const char *encoded, size_t encoded_len) {
+    if (!encoded) return false;
+    size_t at = 0U;
+    while (at < encoded_len) {
+        unsigned char value = 0U;
+        if (!percent_next(encoded, encoded_len, &at, &value)) return false;
+    }
+    return true;
 }
 
 bool nbsp_nvm_version_into(const char *nvm_bin, char *out, size_t out_len) {
@@ -325,13 +373,6 @@ bool nbsp_nvm_version_into(const char *nvm_bin, char *out, size_t out_len) {
     return true;
 }
 
-char *nbsp_nvm_version(const char *nvm_bin) {
-    char version[256];
-    return nbsp_nvm_version_into(nvm_bin, version, sizeof version)
-        ? nbsp_strdup(version)
-        : NULL;
-}
-
 bool nbsp_parse_long(const char *text, long min, long max, long *out) {
     if (!text || !*text || !out) {
         return false;
@@ -357,6 +398,27 @@ bool nbsp_parse_u64(const char *text, uint64_t *out) {
         return false;
     }
     *out = (uint64_t) value;
+    return true;
+}
+
+bool nbsp_parse_u64_n(const char *text, size_t length, uint64_t *out) {
+    if (!text || length == 0U || !out) return false;
+    uint64_t value = 0U;
+    for (size_t i = 0U; i < length; ++i) {
+        unsigned char byte = (unsigned char) text[i];
+        if (byte < '0' || byte > '9') return false;
+        uint64_t digit = (uint64_t) (byte - '0');
+        if (value > (UINT64_MAX - digit) / UINT64_C(10)) return false;
+        value = value * UINT64_C(10) + digit;
+    }
+    *out = value;
+    return true;
+}
+
+bool nbsp_parse_uint_n(const char *text, size_t length, unsigned *out) {
+    uint64_t value = 0U;
+    if (!nbsp_parse_u64_n(text, length, &value) || value > UINT_MAX) return false;
+    *out = (unsigned) value;
     return true;
 }
 
@@ -386,13 +448,4 @@ uint64_t nbsp_wall_millis(void) {
 
 uint64_t nbsp_monotonic_millis(void) {
     return clock_millis(CLOCK_MONOTONIC);
-}
-
-bool nbsp_ends_with(const char *text, const char *suffix) {
-    if (!text || !suffix) {
-        return false;
-    }
-    size_t text_len = strlen(text);
-    size_t suffix_len = strlen(suffix);
-    return text_len >= suffix_len && strcmp(text + text_len - suffix_len, suffix) == 0;
 }

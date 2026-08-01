@@ -57,19 +57,21 @@ static void restore_environment(const char *name, const char *value) {
 }
 
 static void test_paths(void) {
-    char *path = nbsp_path_abbreviate("/Users/igorklepacki/programming/test");
-    CHECK(path && strcmp(path, "/U/i/p/test") == 0);
-    free(path);
+    char path[NBSP_PATH_CAP];
+    CHECK(nbsp_path_abbreviate_into(
+        "/Users/igorklepacki/programming/test", path, sizeof path));
+    CHECK(strcmp(path, "/U/i/p/test") == 0);
 
-    path = nbsp_path_abbreviate("/Users/test/code/acme/app/src");
-    CHECK(path && strcmp(path, "/U/t/c/a/a/src") == 0);
-    free(path);
+    CHECK(nbsp_path_abbreviate_into(
+        "/Users/test/code/acme/app/src", path, sizeof path));
+    CHECK(strcmp(path, "/U/t/c/a/a/src") == 0);
 
-    path = nbsp_path_abbreviate("/one/.config/three/four");
-    CHECK(path && strcmp(path, "/o/.c/t/four") == 0);
-    free(path);
+    CHECK(nbsp_path_abbreviate_into("/one/.config/three/four", path, sizeof path));
+    CHECK(strcmp(path, "/o/.c/t/four") == 0);
 }
 
+/* C quote is a unit/fuzz oracle; production quoting is the Zsh twin in
+ * src/nbsp_zsh.zsh. Keep the two aligned (see tests/test_zsh_quote_parity.zsh). */
 static char *prompt_quote(unsigned options) {
     struct nbsp_buf quoted;
     nbsp_buf_init(&quoted);
@@ -101,28 +103,15 @@ static void test_escape_and_nvm(void) {
     CHECK(quoted && strstr(quoted, "\\x3F\\x3F"));
     free(quoted);
 
-    char *version = nbsp_nvm_version("/Users/test/.nvm/versions/node/v22.14.0/bin");
-    CHECK(version && strcmp(version, "22.14.0") == 0);
-    free(version);
+    char version[256];
+    CHECK(nbsp_nvm_version_into(
+        "/Users/test/.nvm/versions/node/v22.14.0/bin", version, sizeof version));
+    CHECK(strcmp(version, "22.14.0") == 0);
 
-    version = nbsp_nvm_version("/unexpected/path with spaces/bin");
-    CHECK(version == NULL);
-
-    version = nbsp_nvm_version("/Users/test/.nvm/versions/node/v22.\xc3\xa9/bin");
-    CHECK(version == NULL);
-
-    char bytes[256];
-    for (unsigned i = 1U; i < 256U; ++i) bytes[i - 1U] = (char) i;
-    bytes[255] = '\0';
-    char *encoded = nbsp_percent_encode(bytes);
-    char *decoded = encoded ? nbsp_percent_decode(encoded) : NULL;
-    CHECK(decoded && memcmp(decoded, bytes, sizeof bytes) == 0);
-    free(decoded);
-    free(encoded);
-
-    encoded = nbsp_percent_encode("AZaz09-_. /~\xC3\xA9");
-    CHECK(encoded && strcmp(encoded, "AZaz09-_.%20/%7E%C3%A9") == 0);
-    free(encoded);
+    CHECK(!nbsp_nvm_version_into(
+        "/unexpected/path with spaces/bin", version, sizeof version));
+    CHECK(!nbsp_nvm_version_into(
+        "/Users/test/.nvm/versions/node/v22.\xc3\xa9/bin", version, sizeof version));
 
     char too_long[NBSP_PATH_CAP + 32U];
     memset(too_long, 'a', sizeof too_long);
@@ -130,6 +119,47 @@ static void test_escape_and_nvm(void) {
     too_long[sizeof too_long - 1U] = '\0';
     char contracted[NBSP_PATH_CAP];
     CHECK(!nbsp_path_abbreviate_into(too_long, contracted, sizeof contracted));
+}
+
+static void test_util_primitives(void) {
+    char copy[8] = "stale";
+    CHECK(nbsp_copy_cstr(copy, sizeof copy, "hello"));
+    CHECK(strcmp(copy, "hello") == 0);
+    CHECK(!nbsp_copy_cstr(copy, 3U, "hello"));
+    CHECK(strcmp(copy, "hello") == 0);
+
+    uint64_t u64 = 0U;
+    CHECK(nbsp_parse_u64_n("12345", 5U, &u64) && u64 == 12345U);
+    CHECK(!nbsp_parse_u64_n("12a", 3U, &u64));
+    unsigned u = 0U;
+    CHECK(nbsp_parse_uint_n("42", 2U, &u) && u == 42U);
+    CHECK(!nbsp_parse_uint_n("", 0U, &u));
+
+    char bytes[256];
+    for (unsigned i = 1U; i < 256U; ++i) bytes[i - 1U] = (char) i;
+    bytes[255] = '\0';
+    char *encoded = nbsp_percent_encode(bytes);
+    CHECK(encoded);
+    char decoded[256];
+    CHECK(nbsp_percent_decode_into(encoded, strlen(encoded), decoded, sizeof decoded));
+    CHECK(memcmp(decoded, bytes, sizeof bytes) == 0);
+    free(encoded);
+
+    encoded = nbsp_percent_encode("AZaz09-_. /~\xC3\xA9");
+    CHECK(encoded && strcmp(encoded, "AZaz09-_.%20/%7E%C3%A9") == 0);
+    free(encoded);
+
+    char decoded_into[16];
+    CHECK(nbsp_percent_decode_into("%20", 3U, decoded_into, sizeof decoded_into));
+    CHECK(strcmp(decoded_into, " ") == 0);
+    CHECK(!nbsp_percent_decode_into("%00", 3U, decoded_into, sizeof decoded_into));
+    CHECK(!nbsp_percent_decode_into("a b", 3U, decoded_into, sizeof decoded_into));
+    CHECK(!nbsp_percent_decode_into("bad%", 4U, decoded_into, sizeof decoded_into));
+    CHECK(nbsp_percent_encoded_equals("%2Ftmp", 6U, "/tmp"));
+    CHECK(!nbsp_percent_encoded_equals("%2Ftmp", 6U, "/var"));
+    CHECK(nbsp_percent_validate("AZaz09-_.%20/%7E", 16U));
+    CHECK(!nbsp_percent_validate("%00", 3U));
+    CHECK(!nbsp_percent_validate("a b", 3U));
 }
 
 static void test_status_parser(void) {
@@ -577,46 +607,6 @@ static void test_buffer_growth(void) {
     nbsp_buf_free(&buf);
 }
 
-static void test_prompt(void) {
-    CHECK(setenv("HOME", "/Users/test", 1) == 0);
-    CHECK(setenv("NVM_BIN", "/Users/test/.nvm/versions/node/v20.1.0/bin", 1) == 0);
-    char *prompt = nbsp_prompt_render(
-        "/Users/test/code/app", 1, 2450UL, 2U, NBSP_PROMPT_PERCENT);
-    CHECK(prompt != NULL);
-    CHECK(prompt && strstr(prompt, "%F{default}/U/t/c/app%f"));
-    CHECK(prompt && strstr(prompt, "[node:20.1.0]"));
-    CHECK(prompt && strstr(prompt, "[2.5s]"));
-    CHECK(prompt && strstr(prompt, "[jobs:2]"));
-    CHECK(prompt && strstr(prompt, "%F{red}e1%#%f"));
-    free(prompt);
-
-    CHECK(unsetenv("NVM_BIN") == 0);
-    prompt = nbsp_prompt_render(
-        "/Users/test/code/app", 0, 0UL, 0U, NBSP_PROMPT_PERCENT);
-    CHECK(prompt && strstr(prompt, " %# "));
-    CHECK(prompt && !strstr(prompt, "e0%#"));
-    CHECK(prompt && !strstr(prompt, "%F{green}"));
-    free(prompt);
-
-    prompt = nbsp_prompt_render(
-        "/tmp/100%$(touch${IFS}$NBSP_MARKER)`echo`!",
-        1,
-        0UL,
-        0U,
-        NBSP_PROMPT_PERCENT | NBSP_PROMPT_SUBST | NBSP_PROMPT_BANG);
-    CHECK(prompt && strstr(prompt, "${(g::):-"));
-    CHECK(prompt && strstr(prompt, "\\x25\\x25"));
-    CHECK(prompt && strstr(prompt, "$(touch") == NULL);
-    CHECK(prompt && strchr(prompt, '`') == NULL);
-    free(prompt);
-
-    prompt = nbsp_prompt_render("/tmp/100%", 1, 0UL, 0U, 0U);
-    CHECK(prompt && strstr(prompt, "100%"));
-    CHECK(prompt && !strstr(prompt, "%F{"));
-    CHECK(prompt && !strstr(prompt, "%#"));
-    free(prompt);
-}
-
 static void test_data_output(void) {
     struct nbsp_prompt_data data = {
         .cwd = "/tmp/project with space%",
@@ -747,10 +737,10 @@ static void test_dirs_output(void) {
 int main(void) {
     test_paths();
     test_escape_and_nvm();
+    test_util_primitives();
     test_status_parser();
     test_git_discovery();
     test_cache();
-    test_prompt();
     test_data_output();
     test_dirs_output();
     test_buffer_growth();

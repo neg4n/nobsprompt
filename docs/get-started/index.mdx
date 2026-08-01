@@ -83,8 +83,13 @@ Expect required.
   export PATH="$HOME/.local/bin:$PATH"
   ```
 
-  Add this before the `nbsp` initialization line in `~/.zshrc`. Omit it when
+  Add this before the `nbsp` initialization line in `~/.zshrc` so the shell can
+  run `nbsp init` (unless you invoke the binary by absolute path). Omit it when
   `~/.local/bin` is already on `PATH`.
+
+  `init` embeds `_NBSP_BIN` as the absolute path of that binary so data and
+  refresh hooks keep working if `PATH` is rearranged later. After moving or
+  upgrading the install location, re-run `eval "$(nbsp init zsh …)"`.
 
   </Step>
   <Step title="Choose one integration">

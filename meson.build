@@ -39,6 +39,19 @@ zsh_generated_source = custom_target(
   output: 'nbsp_zsh.c',
   command: [python3, '@INPUT0@', '@INPUT1@', '@OUTPUT@'],
 )
+zsh_opinionated_source = files('src/nbsp_opinionated.zsh')
+zsh_opinionated_generated_source = custom_target(
+  'nbsp-zsh-opinionated-source',
+  input: ['tools/embed_zsh.py', 'src/nbsp_opinionated.zsh'],
+  output: 'nbsp_opinionated.c',
+  command: [
+    python3,
+    '@INPUT0@',
+    '@INPUT1@',
+    '@OUTPUT@',
+    'nbsp_print_zsh_opinionated',
+  ],
+)
 zsh_autosuggest_source = files('src/nbsp_autosuggest.zsh')
 zsh_autosuggest_generated_source = custom_target(
   'nbsp-zsh-autosuggest-source',
@@ -60,7 +73,12 @@ core_sources = files(
   'src/nbsp_dirs.c',
   'src/nbsp_git.c',
   'src/nbsp_prompt.c',
-) + [zsh_generated_source, zsh_autosuggest_generated_source]
+  'src/nbsp_refresh.c',
+) + [
+  zsh_generated_source,
+  zsh_opinionated_generated_source,
+  zsh_autosuggest_generated_source,
+]
 
 core_lib = static_library(
   'nbsp-core',
@@ -89,6 +107,12 @@ install_data(
 install_data(
   'docs/get-started/index.mdx',
   'docs/get-started/opinionated-prompt.mdx',
+  install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt', 'get-started'),
+)
+# Install the canonical template (docs path is a symlink into src/).
+install_data(
+  'src/nbsp_opinionated.zsh',
+  rename: 'opinionated-prompt.zsh',
   install_dir: join_paths(get_option('datadir'), 'doc', 'nobsprompt', 'get-started'),
 )
 install_data(

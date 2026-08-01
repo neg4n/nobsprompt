@@ -26,17 +26,10 @@ struct nbsp_prompt_data {
     unsigned git_stashes;
 };
 
-unsigned nbsp_git_timeout_from_env(void);
 bool nbsp_prompt_data_collect(const char *cwd,
     int last_status,
     unsigned long duration_ms,
     unsigned jobs,
     struct nbsp_prompt_data *data);
-char *nbsp_prompt_render(const char *cwd,
-    int last_status,
-    unsigned long duration_ms,
-    unsigned jobs,
-    unsigned prompt_options);
-int nbsp_refresh(const char *cwd, unsigned timeout_ms, bool notify, bool force);
 
 #endif /* NBSP_PROMPT_H */

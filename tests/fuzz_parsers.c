@@ -37,27 +37,28 @@ static void exercise_input(const uint8_t *data, size_t size) {
         nbsp_buf_init(&quoted);
         (void) nbsp_prompt_quote(&quoted, input, prompt_options);
         nbsp_buf_free(&quoted);
-
-        char *prompt = nbsp_prompt_render(input,
-            (int) (size & 1U),
-            (unsigned long) size,
-            (unsigned) (size & 7U),
-            prompt_options);
-        free(prompt);
     }
+
+    struct nbsp_prompt_data data;
+    (void) nbsp_prompt_data_collect(
+        input, (int) (size & 1U), (unsigned long) size, (unsigned) (size & 7U), &data);
 
     char *encoded = nbsp_percent_encode(input);
     if (encoded) {
-        char *decoded = nbsp_percent_decode(encoded);
-        free(decoded);
+        char roundtrip[NBSP_PATH_CAP];
+        (void) nbsp_percent_decode_into(
+            encoded, strlen(encoded), roundtrip, sizeof roundtrip);
         free(encoded);
     }
 
-    char *version = nbsp_nvm_version(input);
-    free(version);
+    char version[256];
+    (void) nbsp_nvm_version_into(input, version, sizeof version);
 
     char path[NBSP_PATH_CAP];
     (void) nbsp_path_abbreviate_into(input, path, sizeof path);
+    char decoded[NBSP_PATH_CAP];
+    (void) nbsp_percent_decode_into(input, size, decoded, sizeof decoded);
+    (void) nbsp_percent_validate(input, size);
 
     long parsed = 0;
     (void) nbsp_parse_long(input, -1000L, 1000L, &parsed);

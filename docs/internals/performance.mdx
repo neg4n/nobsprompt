@@ -3,9 +3,10 @@ title: Performance and memory
 description: Reproduce foreground latency measurements and understand the native safety checks, their coverage, and their limits.
 ---
 
-The foreground `nbsp prompt` and `nbsp data` commands use the same collector.
-Git status refresh is deliberately outside that path: Zsh starts `nbsp refresh`
-as a background worker and reloads prompt data after the worker completes.
+The foreground `nbsp data` command is the collector used by both opinionated
+and detached Zsh. Git status refresh is deliberately outside that path: Zsh
+starts `nbsp refresh` as a background worker and reloads prompt data after the
+worker completes.
 
 The repository does not ship a numerical performance baseline. Do not quote a
 latency, binary-size improvement, memory footprint, or instruction-count claim
@@ -22,28 +23,26 @@ invocations. For example:
 zsh bench/benchmark.zsh \
   --warmup 100 \
   --iterations 3000 \
-  --output ./prompt-benchmark.txt \
-  -- ./build/nbsp prompt
+  --output ./data-benchmark.txt \
+  -- ./build/nbsp data
 ```
 
-The harness supports `prompt`, `data`, and `dirs`. It performs the requested
-warm-up invocations first, times each measured invocation with Zsh's
-`EPOCHREALTIME`, redirects the command's standard output, and calculates mean,
-minimum, maximum, p50, and p95 from the sorted samples. Percentiles use the
-nearest-rank index. The report also contains every sample as
-`sample_sorted_ms`; those values cannot reconstruct temporal order. Because
-`EPOCHREALTIME` is a wall clock rather than a monotonic clock, the harness
-rejects negative, non-finite, and implausibly large intervals but cannot prevent
-smaller wall-clock adjustments from affecting a result.
+The harness supports `data` and `dirs`. It performs the requested warm-up
+invocations first, times each measured invocation with Zsh's `EPOCHREALTIME`,
+redirects the command's standard output, and calculates mean, minimum, maximum,
+p50, and p95 from the sorted samples. Percentiles use the nearest-rank index.
+The report also contains every sample as `sample_sorted_ms`; those values
+cannot reconstruct temporal order. Because `EPOCHREALTIME` is a wall clock
+rather than a monotonic clock, the harness rejects negative, non-finite, and
+implausibly large intervals but cannot prevent smaller wall-clock adjustments
+from affecting a result.
 
-For `prompt` and `data`, the default representative inputs are status `17`,
-duration `2345` milliseconds, and two jobs. The prompt defaults to the
-`percent` prompt-option mask. `NBSP_BENCH_STATUS`,
-`NBSP_BENCH_DURATION_MS`, `NBSP_BENCH_JOBS`, and
-`NBSP_BENCH_PROMPT_OPTIONS` select different inputs. Iterations, warm-up,
-output, and working directory also have `NBSP_BENCH_ITERATIONS`,
-`NBSP_BENCH_WARMUP`, `NBSP_BENCH_OUTPUT`, and `NBSP_BENCH_CWD` defaults that
-their corresponding command-line flags override.
+For `data`, the default representative inputs are status `17`,
+duration `2345` milliseconds, and two jobs. `NBSP_BENCH_STATUS`,
+`NBSP_BENCH_DURATION_MS`, and `NBSP_BENCH_JOBS` select different inputs.
+Iterations, warm-up, output, and working directory also have
+`NBSP_BENCH_ITERATIONS`, `NBSP_BENCH_WARMUP`, `NBSP_BENCH_OUTPUT`, and
+`NBSP_BENCH_CWD` defaults that their corresponding command-line flags override.
 
 Iterations are limited to 100,000 and warm-up invocations to 100,000. The
 harness rejects an output symlink, special file, or pathname/inode that would

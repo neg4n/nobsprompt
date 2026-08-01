@@ -6,9 +6,27 @@ case $1 in
   *) nbsp=$(cd "$(dirname "$1")" && pwd)/$(basename "$1") ;;
 esac
 zsh_source=$2
-zsh_autosuggest_source=$3
+zsh_opinionated_source=$3
+zsh_autosuggest_source=$4
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/nbsp-cli.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+nbsp_dir=$(cd "$(dirname "$nbsp")" && pwd)
+
+# Build opinionated PROMPT in the current directory (optional status/duration/jobs).
+opinionated() {
+  PATH="$nbsp_dir:$PATH" zsh -dfc '
+    emulate -L zsh
+    setopt promptpercent
+    eval "$(nbsp init zsh)"
+    if (( $# >= 3 )); then
+      _nbsp_last_status=$1
+      _nbsp_last_duration_ms=$2
+      _nbsp_last_jobs=$3
+      _nbsp_load_data || PROMPT="> "
+    fi
+    print -rn -- "$PROMPT"
+  ' _ "$@"
+}
 
 "$nbsp" --version | grep -q '^nbsp 0\.2\.0$'
 "$nbsp" --help | grep -q 'nbsp init zsh'
@@ -16,19 +34,83 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 "$nbsp" --help | grep -q 'nbsp data'
 "$nbsp" --help | grep -q 'nbsp refresh \[--cwd PATH\] \[--notify\] \[--force\]'
 "$nbsp" --help | grep -q 'nbsp dirs \[--cwd PATH\] \[--format nul\]'
+if "$nbsp" --help | grep -q 'nbsp prompt'; then
+  echo 'help still documents removed prompt command' >&2
+  exit 1
+fi
+
 "$nbsp" init zsh > "$tmp/nbsp_zsh.zsh"
 test "$(sed -n '1p' "$tmp/nbsp_zsh.zsh")" = 'typeset -g _NBSP_INIT_MODE=prompt'
-sed '1d' "$tmp/nbsp_zsh.zsh" > "$tmp/nbsp_zsh_body.zsh"
-cmp "$zsh_source" "$tmp/nbsp_zsh_body.zsh"
-"$nbsp" init zsh --detached | grep -q '^typeset -g _NBSP_INIT_MODE=detached$'
+grep -q '^typeset -g _NBSP_BIN=' "$tmp/nbsp_zsh.zsh"
+sed '1,2d' "$tmp/nbsp_zsh.zsh" > "$tmp/nbsp_zsh_body.zsh"
+cat "$zsh_source" "$zsh_opinionated_source" > "$tmp/expected_prompt_init.zsh"
+cmp "$tmp/expected_prompt_init.zsh" "$tmp/nbsp_zsh_body.zsh"
+grep -q 'nbsp_opinionated_prompt()' "$tmp/nbsp_zsh.zsh"
+repo_root=$(cd "$(dirname "$zsh_opinionated_source")/.." && pwd)
+docs_opinionated="$repo_root/docs/get-started/opinionated-prompt.zsh"
+test -L "$docs_opinionated" || {
+  echo 'docs opinionated-prompt.zsh must be a symlink to src' >&2
+  exit 1
+}
+cmp -s "$zsh_opinionated_source" "$docs_opinionated" || {
+  echo 'docs opinionated symlink does not match src/nbsp_opinionated.zsh' >&2
+  exit 1
+}
+# Docs page code fence must match the canonical template byte-for-byte.
+python3 - "$zsh_opinionated_source" "$repo_root/docs/get-started/opinionated-prompt.mdx" <<'PY' || exit 1
+import sys
+from pathlib import Path
+src = Path(sys.argv[1]).read_text()
+mdx = Path(sys.argv[2]).read_text()
+start = mdx.find("```zsh\n# Opinionated one-line prompt")
+if start < 0:
+    print("opinionated-prompt.mdx missing template fence", file=sys.stderr)
+    sys.exit(1)
+start = mdx.find("\n", start) + 1  # after ```zsh\n
+end = mdx.find("\n```", start)
+if end < 0:
+    print("opinionated-prompt.mdx template fence not closed", file=sys.stderr)
+    sys.exit(1)
+body = mdx[start:end] + "\n"
+if body != src:
+    print("opinionated-prompt.mdx template fence differs from src/nbsp_opinionated.zsh", file=sys.stderr)
+    sys.exit(1)
+PY
+"$nbsp" init zsh --detached > "$tmp/nbsp_zsh_detached.zsh"
+test "$(sed -n '1p' "$tmp/nbsp_zsh_detached.zsh")" = 'typeset -g _NBSP_INIT_MODE=detached'
+grep -q '^typeset -g _NBSP_BIN=' "$tmp/nbsp_zsh_detached.zsh"
+sed '1,2d' "$tmp/nbsp_zsh_detached.zsh" > "$tmp/nbsp_zsh_detached_body.zsh"
+cmp "$zsh_source" "$tmp/nbsp_zsh_detached_body.zsh"
+if grep -q 'nbsp_opinionated_prompt' "$tmp/nbsp_zsh_detached.zsh"; then
+  echo 'detached init unexpectedly included opinionated prompt' >&2
+  exit 1
+fi
 "$nbsp" init zsh --autosuggest > "$tmp/nbsp_zsh_autosuggest.zsh"
 grep -q '^    _nbsp_as_pre_redraw() {' "$tmp/nbsp_zsh_autosuggest.zsh"
 zsh_init_bytes=$(wc -c < "$tmp/nbsp_zsh.zsh" | tr -d ' ')
 tail -c "+$((zsh_init_bytes + 1))" "$tmp/nbsp_zsh_autosuggest.zsh" > "$tmp/nbsp_zsh_autosuggest_body.zsh"
 cmp "$zsh_autosuggest_source" "$tmp/nbsp_zsh_autosuggest_body.zsh"
+# Hooks must not depend on PATH when init baked an absolute binary path.
+no_path_prompt=$(
+  PATH=/usr/bin:/bin zsh -dfc '
+    emulate -L zsh
+    setopt promptpercent
+    eval "$("$1" init zsh)"
+    print -rn -- "$PROMPT"
+  ' _ "$nbsp"
+)
+printf '%s' "$no_path_prompt" | grep -Fq '%#'
+if printf '%s' "$no_path_prompt" | grep -Fxq '> '; then
+  echo 'opinionated prompt fell back to > when PATH lacked nbsp' >&2
+  exit 1
+fi
 "$nbsp" init zsh --autosuggest --detached > "$tmp/nbsp_zsh_detached_autosuggest.zsh"
 grep -q '^typeset -g _NBSP_INIT_MODE=detached$' "$tmp/nbsp_zsh_detached_autosuggest.zsh"
 grep -q '^    _nbsp_as_pre_redraw() {' "$tmp/nbsp_zsh_detached_autosuggest.zsh"
+if grep -q 'nbsp_opinionated_prompt' "$tmp/nbsp_zsh_detached_autosuggest.zsh"; then
+  echo 'detached+autosuggest init included opinionated prompt' >&2
+  exit 1
+fi
 "$nbsp" init zsh --detached --autosuggest >/dev/null
 conflict_result=$(zsh -dfc '
   _zsh_autosuggest_start() { :; }
@@ -92,25 +174,11 @@ if "$nbsp" init zsh --autosuggest --autosuggest >/dev/null 2>&1; then
 else
   test $? -eq 2
 fi
-if "$nbsp" prompt --status 999 >/dev/null 2>&1; then
+if "$nbsp" data --status 999 >/dev/null 2>&1; then
   echo 'invalid status unexpectedly succeeded' >&2
   exit 1
 else
   test $? -eq 2
-fi
-for invalid_prompt_options in '' percent,percent none,percent percent,unknown percent,; do
-  if "$nbsp" prompt --prompt-options "$invalid_prompt_options" >/dev/null 2>&1; then
-    echo "invalid prompt options unexpectedly succeeded: $invalid_prompt_options" >&2
-    exit 1
-  else
-    test $? -eq 2
-  fi
-done
-plain_prompt=$(cd "$tmp" && "$nbsp" prompt --status 1 --prompt-options none)
-printf '%s' "$plain_prompt" | grep -Fq 'e1'
-if printf '%s' "$plain_prompt" | grep -Eq '%F\{|%#|%f'; then
-  echo 'plain prompt unexpectedly emitted percent escapes' >&2
-  exit 1
 fi
 if "$nbsp" data --format json >/dev/null 2>&1; then
   echo 'invalid data format unexpectedly succeeded' >&2
@@ -118,22 +186,20 @@ if "$nbsp" data --format json >/dev/null 2>&1; then
 else
   test $? -eq 2
 fi
-for deleted_cwd_command in prompt data; do
-  deleted_cwd="$tmp/deleted-cwd-$deleted_cwd_command"
-  deleted_cwd_output="$tmp/deleted-cwd-$deleted_cwd_command.out"
-  mkdir "$deleted_cwd"
-  if (
-    cd "$deleted_cwd"
-    rmdir "$deleted_cwd" || exit 10
-    "$nbsp" "$deleted_cwd_command" > "$deleted_cwd_output"
-  ); then
-    echo "$deleted_cwd_command from a deleted working directory unexpectedly succeeded" >&2
-    exit 1
-  else
-    test $? -eq 1
-  fi
-  test ! -s "$deleted_cwd_output"
-done
+deleted_cwd="$tmp/deleted-cwd-data"
+deleted_cwd_output="$tmp/deleted-cwd-data.out"
+mkdir "$deleted_cwd"
+if (
+  cd "$deleted_cwd"
+  rmdir "$deleted_cwd" || exit 10
+  "$nbsp" data > "$deleted_cwd_output"
+); then
+  echo 'data from a deleted working directory unexpectedly succeeded' >&2
+  exit 1
+else
+  test $? -eq 1
+fi
+test ! -s "$deleted_cwd_output"
 if "$nbsp" init zsh --unknown >/dev/null 2>&1; then
   echo 'invalid init mode unexpectedly succeeded' >&2
   exit 1
@@ -180,17 +246,19 @@ git -C "$repo" add a.txt b.txt
 git -C "$repo" commit -qm initial
 branch=$(git -C "$repo" branch --show-current)
 
-cold=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+cold=$(cd "$repo" && NBSP_CACHE_DIR="$cache" opinionated)
 printf '%s' "$cold" | grep -Fq "[$branch ...]"
 printf '%s' "$cold" | grep -Fq "%F{default}[$branch ...]%f"
+cold_data=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" data)
+printf '%s\n' "$cold_data" | grep -Fxq 'git_valid=0'
 
 NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo"
 printf 'forced refresh\n' >> "$repo/a.txt"
 NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo"
-debounced=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+debounced=$(cd "$repo" && NBSP_CACHE_DIR="$cache" opinionated)
 printf '%s' "$debounced" | grep -Fq "[$branch]"
 NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo" --force
-forced=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+forced=$(cd "$repo" && NBSP_CACHE_DIR="$cache" opinionated)
 printf '%s' "$forced" | grep -Fq "[$branch ~1]"
 
 insecure_cache="$tmp/insecure-cache"
@@ -209,7 +277,7 @@ printf 'new\n' > "$repo/c.txt"
 sleep 1
 NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo"
 
-warm=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+warm=$(cd "$repo" && NBSP_CACHE_DIR="$cache" opinionated)
 printf '%s' "$warm" | grep -Fq "[$branch +1 ~1 ?1]"
 
 selector_repo="$tmp/selector-repo"
@@ -248,7 +316,7 @@ GIT_DIR="$selector_repo/.git" GIT_WORK_TREE="$selector_repo" \
   NBSP_TEST_REAL_GIT="$selector_real_git" PATH="$selector_bin:$PATH" \
   NBSP_CACHE_DIR="$cache" \
   "$nbsp" refresh --cwd "$repo" --force
-selector_isolated=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+selector_isolated=$(cd "$repo" && NBSP_CACHE_DIR="$cache" opinionated)
 printf '%s' "$selector_isolated" | grep -Fq "[$branch +1 ~1 ?1]"
 
 data=$(cd "$repo" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
@@ -281,7 +349,7 @@ test "$nul_check" = "18 2 $branch 7"
 
 cache_file=$(find "$cache/git" -name '*.cache' -type f | head -n 1)
 printf 'version=1\nrepo=corrupt\nupdated_ms=oops\n' > "$cache_file"
-corrupt_prompt=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+corrupt_prompt=$(cd "$repo" && NBSP_CACHE_DIR="$cache" opinionated)
 printf '%s' "$corrupt_prompt" | grep -Fq "[$branch ...]"
 NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo"
 
@@ -292,7 +360,7 @@ while test "$i" -lt 16; do
   i=$((i + 1))
 done
 wait
-race_prompt=$(cd "$repo" && NBSP_CACHE_DIR="$race_cache" "$nbsp" prompt)
+race_prompt=$(cd "$repo" && NBSP_CACHE_DIR="$race_cache" opinionated)
 printf '%s' "$race_prompt" | grep -Fq "[$branch +1 ~1 ?1]"
 
 mkdir -p "$repo/nested"
@@ -300,25 +368,29 @@ logical_path="$tmp/logical-nested"
 logical_cache="$tmp/logical-cache"
 ln -s "$repo/nested" "$logical_path"
 NBSP_CACHE_DIR="$logical_cache" "$nbsp" refresh --cwd "$logical_path" --force
-logical_prompt=$(cd "$repo/nested" && NBSP_CACHE_DIR="$logical_cache" "$nbsp" prompt)
+logical_prompt=$(cd "$repo/nested" && NBSP_CACHE_DIR="$logical_cache" opinionated)
 printf '%s' "$logical_prompt" | grep -Fq "[$branch +1 ~1 ?1]"
 
 worktree="$tmp/worktree"
 git -C "$repo" worktree add -qb worktree-check "$worktree"
-worktree_cold=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+worktree_cold=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" opinionated)
 printf '%s' "$worktree_cold" | grep -Fq '[worktree-check ...]'
 NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$worktree"
-worktree_warm=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+worktree_warm=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" opinionated)
 printf '%s' "$worktree_warm" | grep -Fq '[worktree-check]'
 
 git -C "$worktree" switch -qc 'feature/100%'
-percent_prompt=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+percent_prompt=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" opinionated)
 printf '%s' "$percent_prompt" | grep -Fq '[feature/100%% ...]'
 
 danger_branch='feature/$(touch${IFS}$NBSP_PROMPT_MARKER)-`touch${IFS}$NBSP_PROMPT_MARKER`-!-%'
 git -C "$worktree" switch -qc "$danger_branch"
-danger_prompt=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" \
-  "$nbsp" prompt --prompt-options percent,subst,bang)
+danger_prompt=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" PATH="$nbsp_dir:$PATH" zsh -dfc '
+  emulate -L zsh
+  setopt promptpercent promptsubst promptbang
+  eval "$(nbsp init zsh)"
+  print -rn -- "$PROMPT"
+')
 printf '%s' "$danger_prompt" | grep -Fq '${(g::):-'
 if printf '%s' "$danger_prompt" | grep -Fq '$(touch'; then
   echo 'PROMPT_SUBST-safe renderer leaked raw command substitution syntax' >&2
@@ -331,7 +403,7 @@ test ! -e "$prompt_marker"
 
 git -C "$worktree" checkout --detach -q
 detached=$(git -C "$worktree" rev-parse --short=8 HEAD)
-detached_prompt=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+detached_prompt=$(cd "$worktree" && NBSP_CACHE_DIR="$cache" opinionated)
 printf '%s' "$detached_prompt" | grep -Fq "[$detached ...]"
 
 fakebin="$tmp/fakebin"
@@ -348,7 +420,7 @@ if (cd "$repo" && PATH="$fakebin:$PATH" NBSP_CACHE_DIR="$cache" \
 else
   test $? -eq 124
 fi
-preserved=$(cd "$repo" && NBSP_CACHE_DIR="$cache" "$nbsp" prompt)
+preserved=$(cd "$repo" && NBSP_CACHE_DIR="$cache" opinionated)
 printf '%s' "$preserved" | grep -Fq "[$branch +1 ~1 ?1]"
 
 printf '#!/bin/sh\nexec 1>&-\n/bin/sleep 2\n' > "$fakebin/git"
@@ -410,24 +482,21 @@ NBSP_CACHE_DIR="$cache" "$nbsp" refresh --cwd "$repo" --force
 printf '#!/bin/sh\n: > "$NBSP_GIT_MARKER"\nexit 99\n' > "$fakebin/git"
 chmod +x "$fakebin/git"
 (cd "$repo" && NBSP_GIT_MARKER="$marker" PATH="$fakebin:$PATH" \
-  NBSP_CACHE_DIR="$cache" "$nbsp" prompt >/dev/null)
-test ! -e "$marker"
-(cd "$repo" && NBSP_GIT_MARKER="$marker" PATH="$fakebin:$PATH" \
   NBSP_CACHE_DIR="$cache" "$nbsp" data >/dev/null)
 test ! -e "$marker"
 
 nvm=$(cd "$repo" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
-  "$nbsp" prompt --status 1 --duration-ms 2500 --jobs 2)
+  NBSP_CACHE_DIR="$cache" opinionated 1 2500 2)
 printf '%s' "$nvm" | grep -Fq '[node:22.14.0]'
 printf '%s' "$nvm" | grep -Fq '%F{green}[node:22.14.0]%f'
 printf '%s' "$nvm" | grep -Fq '[2.5s]'
 printf '%s' "$nvm" | grep -Fq '[jobs:2]'
 printf '%s' "$nvm" | grep -Fq '%F{red}e1%#%f'
 
-not_found=$(cd "$repo" && NVM_BIN= "$nbsp" prompt --status 127)
+not_found=$(cd "$repo" && NVM_BIN= NBSP_CACHE_DIR="$cache" opinionated 127 0 0)
 printf '%s' "$not_found" | grep -Fq '%F{red}e127%#%f'
 
-success=$(cd "$repo" && NVM_BIN= "$nbsp" prompt --status 0)
+success=$(cd "$repo" && NVM_BIN= NBSP_CACHE_DIR="$cache" opinionated 0 0 0)
 printf '%s' "$success" | grep -Fq ' %# '
 if printf '%s' "$success" | grep -Fq 'e0%#'; then
   echo 'successful prompt unexpectedly emitted an exit status' >&2
@@ -438,13 +507,14 @@ if printf '%s' "$success" | grep -Fq '%F{green}'; then
   exit 1
 fi
 
-opinionated=$(cd "$tmp" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
-  "$nbsp" prompt --status 1 --duration-ms 2450 --jobs 2)
+# Presentation env vars are intentionally ignored (fixed opinionated layout).
+opinionated_base=$(cd "$tmp" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
+  opinionated 1 2450 2)
 overridden=$(cd "$tmp" && NVM_BIN="$tmp/.nvm/versions/node/v22.14.0/bin" \
   NBSP_COLOR_PATH=cyan NBSP_COLOR_NODE=red NBSP_PROMPT_CHAR='$' \
   NBSP_DURATION_THRESHOLD_MS=999999 NBSP_SHOW_NVM=0 NBSP_SHOW_JOBS=0 \
-  "$nbsp" prompt --status 1 --duration-ms 2450 --jobs 2)
-test "$opinionated" = "$overridden"
+  opinionated 1 2450 2)
+test "$opinionated_base" = "$overridden"
 
 init_check=$(PATH="$(dirname "$nbsp"):$PATH" zsh -dfc '
   eval "$(nbsp init zsh)"
