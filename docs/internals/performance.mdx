@@ -24,7 +24,7 @@ zsh bench/benchmark.zsh \
   --warmup 100 \
   --iterations 3000 \
   --output ./data-benchmark.txt \
-  -- ./build/nbsp data
+  -- ./zig-out/bin/nbsp data
 ```
 
 The harness supports `data` and `dirs`. It performs the requested warm-up
@@ -99,10 +99,10 @@ changes when and where the work runs.
 
 Implementation choices visible in the current source include:
 
-- fixed-size buffers for repository discovery and direct `HEAD` reads;
+- bounded heap-backed storage for repository discovery and direct `HEAD` reads;
 - a bounded cache file read followed by complete validation and an EOF check;
-- one growable output buffer for prompt rendering, while the data command
-  writes its framed records directly to the selected output stream;
+- a bounded synchronous output buffer for data framing and embedded shell
+  sources; presentation remains in the canonical Zsh template;
 - allocation-free NVM version extraction;
 - a bounded Git child process with a clean repository-selection environment,
   output cap, timeout, and complete porcelain-v2 parse before publication;
@@ -116,66 +116,59 @@ an unspecified baseline.
 
 ## Native safety checks
 
-`sh tests/run_memory_checks.sh` requires Python 3.9 or newer and runs several
-different checks:
+```sh
+zig build test -Doptimize=Debug -Dzsh_tests=enabled
+zig build check
+zig build memory-check
+```
 
-1. The configured analyzer compiler performs path-sensitive static analysis on
-   every production C translation unit, including generated C that embeds both
-   Zsh sources, and analyzer findings fail the run.
-2. A debug build runs the Meson test suite under AddressSanitizer and
-   UndefinedBehaviorSanitizer with abort-on-first-error, strict string checks,
-   and stack-use-after-return detection.
-3. A separate native debug build runs the same selected Meson tests. On Darwin,
-   it additionally enables malloc scribbling, guard edges, and a heap check
-   after every allocation operation.
-4. A deterministic ASan+UBSan mutation harness runs 250,000 iterations by
-   default. It combines valid Git/cache/path/NVM seeds with mutated and random
-   inputs up to 16 KiB, exercises all eight prompt-quoting and rendering option
-   masks, and
-   reaches the Git and cache parsers, codecs, path and NVM helpers, numeric
-   parsing, prompt rendering, and buffer growth.
+`zig build memory-check` runs the unit and shell suites in Debug and
+ReleaseSafe, repeats Debug tests with Darwin malloc scribbling and guard
+edges, and runs 250,000 deterministic mutation iterations by default.
+`NBSP_FUZZ_ITERATIONS` accepts 1 through 10,000,000.
 
-Interactive Zsh coverage is controlled by the Meson `zsh_tests` feature option:
+Unit tests use `std.testing.allocator` for leak detection and exercise every
+allocation failure in the tested helper, cache publication/read/clear, and
+directory collection paths. Mutation tests use a checked DebugAllocator and
+cover porcelain/cache parsers, percent codecs, numeric parsing, path
+abbreviation, NVM extraction, and byte-preserving codec round trips with
+inputs up to 16 KiB. Shell tests exercise prompt quoting under all eight
+option masks; quoting remains implemented in Zsh.
 
-- `auto` (the default) registers the four Expect-backed tests when `expect` is
-  available and otherwise omits them;
-- `enabled` makes `expect` a required program at setup time;
-- `disabled` does not look for `expect` and omits those tests.
+The executable uses `std.heap.c_allocator`, so Darwin malloc diagnostics
+exercise its actual heap. These diagnostics detect some corruption in the
+exercised code; they are not leak detection. Zig allocator diagnostics and
+runtime checks are not ASan, UBSan, Clang static analysis, or LeakSanitizer.
+Passing this suite is evidence for the tested cases, not proof of memory safety.
 
-The non-PTY Zsh syntax, data-protocol, and option-isolation tests remain
-registered independently. This matches [Meson's three-state feature-option
-semantics](https://mesonbuild.com/Build-options.html#features).
+Production ReleaseSafe retains bounds, overflow, and other runtime checks.
+A safety failure writes a diagnostic and aborts. Debug builds retain full Zig
+panic diagnostics; production does not initialize the debugging I/O backend
+or alternate signal stack merely to collect a prompt.
 
-Standalone Meson setup defaults to `auto`. The comprehensive
-`run_memory_checks.sh` runner instead defaults `NBSP_ZSH_TESTS=enabled`, so
-Expect is required unless the caller explicitly selects `auto` or `disabled`.
-When an unavailable optional suite is omitted, it is not registered; the runner
-does not call that a skipped test.
+Interactive Zsh coverage is controlled by `-Dzsh_tests=auto|enabled|disabled`:
 
-### Leak-detection boundaries
+- `auto` registers the four Expect-backed cases when Expect is available;
+- `enabled` requires Expect and fails configuration when it is missing;
+- `disabled` omits those cases.
 
-`NBSP_ASAN_LEAKS=auto|enabled|disabled` controls the memory-check runner's leak
-policy. In `auto`, the runner probes the selected ASan runtime with both a clean
-program and an intentional leak, and requires the leak-specific diagnostic and
-controlled exit status instead of inferring capability only from the operating
-system. The test and fuzz builds are probed separately because they can resolve
-different runtimes. `enabled` still probes and fails when support cannot be
-demonstrated; `disabled` turns leak detection off explicitly. Ambient
-`LSAN_OPTIONS` does not control these checks.
+Non-PTY syntax, protocol, quoting, and option-isolation tests remain registered
+independently. The comprehensive memory runner defaults `NBSP_ZSH_TESTS` to
+`enabled`. An omitted optional suite is not reported as a passed or skipped test.
 
-That distinction matters on macOS. [Upstream Clang documents that its macOS
-runtime can enable leak detection](https://clang.llvm.org/docs/AddressSanitizer.html#memory-leak-detection),
-while [Apple documents that Xcode's Address Sanitizer does not detect memory
-leaks](https://developer.apple.com/documentation/xcode/diagnosing-memory-thread-and-crash-issues-early).
-The runner also leaves ASan initialization-order checking off on macOS because
-[upstream Clang marks that option unsupported there](https://clang.llvm.org/docs/AddressSanitizer.html#initialization-order-checking).
+## Rewrite comparisons
 
-On Darwin, the full native suite runs with malloc scribbling and guard edges;
-the native C unit binary then runs directly with per-allocation heap checks.
-These are corruption diagnostics, not leak detection. They do not replace
-LeakSanitizer, and the suite does not claim to measure process memory footprint.
-Passing these checks is evidence for the exercised inputs and configurations,
-not proof of memory safety or exhaustive parser coverage.
+The retained C reference is revision
+`56db8ce9cce0ea50345d66288c76dfca30f67f47`. Raw reports and the acceptance
+contract live under `verification/`. Compare binaries on the same machine,
+with the same harness and unchanged workload. Native Intel measurements are
+required before promoting the rewrite branch; cross-compilation alone cannot
+establish runtime compatibility or performance.
+
+The rewrite acceptance limits are 5% growth in mean, p50, and p95 foreground
+latency and 10% growth in measured peak process memory. Binary size is recorded
+for review but has no strict percentage gate. Heap allocations and bytes are
+reported separately from resident memory.
 
 ## Architectural alternatives
 
@@ -195,8 +188,7 @@ For a machine-local experiment, compiler-specific CPU tuning can be requested
 explicitly:
 
 ```sh
-meson setup build-native --buildtype=release -Doptimization=3 \
-  -Db_lto=true -Dc_args=-mcpu=native
+zig build -Dcpu=native
 ```
 
 Such a binary targets the build machine's CPU capabilities and should not be

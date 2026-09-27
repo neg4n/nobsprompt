@@ -78,3 +78,13 @@ Update the following together:
 - Blume in `package.json` and `pnpm-lock.yaml`.
 
 Run `pnpm run docs:ci` before merging any version change.
+
+## Zig branch promotion
+
+The rewrite is developed on `codex/zig-rewrite`. Cloudflare Pages continues to
+track `main` until the rewrite passes acceptance. Changing the GitHub default
+branch does not change the Pages production branch. At promotion, change Pages'
+production branch to `codex/zig-rewrite`, run the pinned `docs:ci` build, and
+verify the deployed site. Keep `main` and the C reference revision available
+for rollback. No deployment or remote branch-setting change is implied by a
+local build.

@@ -5,17 +5,18 @@ description: Clone, review, build, and install nobsprompt on macOS, configure it
 
 ## Requirements
 
-- macOS;
+- macOS 13 or newer, on Apple Silicon or Intel;
 - Zsh 5.8 or newer;
-- a C11 compiler;
-- Git 2.25 or newer;
-- Make;
-- Meson 1.1 or newer;
-- Ninja;
-- Python 3.9 or newer.
+- Zig exactly 0.16.0;
+- Git 2.25 or newer.
+
+Zig's build system compiles and installs the native application without Make,
+Meson, Ninja, Python, or third-party Zig packages. The default is ReleaseSafe,
+with runtime checks and a baseline CPU target. Zig remains pre-1.0: future
+compiler versions are not assumed compatible with this pinned release.
 
 Expect is optional for building and installing. With the default
-`zsh_tests=auto` setting, Meson does not register the four PTY-backed
+`zsh_tests=auto` setting, the Zig build does not register the four PTY-backed
 interactive Zsh tests when Expect is unavailable; `-Dzsh_tests=enabled` makes
 Expect required.
 
@@ -25,7 +26,7 @@ Expect required.
   <Step title="Clone source, tests, benchmark, and local docs">
 
   ```sh
-  git clone --depth 1 --filter=blob:none --sparse --no-tags https://github.com/neg4n/nobsprompt.git && cd nobsprompt && git sparse-checkout set src tools tests bench doc docs
+  git clone --branch codex/zig-rewrite --depth 1 --filter=blob:none --sparse --no-tags https://github.com/neg4n/nobsprompt.git && cd nobsprompt && git sparse-checkout set src tests bench doc docs verification
   ```
 
   :::tip
@@ -33,7 +34,7 @@ Expect required.
   downloading the website project or videos. To get everything instead:
 
   ```sh
-  git clone https://github.com/neg4n/nobsprompt.git && cd nobsprompt
+  git clone --branch codex/zig-rewrite https://github.com/neg4n/nobsprompt.git && cd nobsprompt
   ```
   :::
 
@@ -50,8 +51,8 @@ Expect required.
   >
     Treat this checkout as untrusted. Do not build, install, or execute
     repository code during the review. Record the current commit hash. Trace
-    the complete `make install` control flow through Make, Meson, generated
-    files, Python helpers, C sources, and embedded Zsh. Inventory every
+    the complete `zig build install` control flow through build.zig,
+    build.zig.zon, Zig sources, and embedded Zsh. Inventory every
     executable, script, dependency, subprocess, and generated input reached by
     that flow. Inspect for unexpected URLs or network access, shell execution,
     process spawning, filesystem writes or deletion outside the documented
@@ -70,11 +71,12 @@ Expect required.
   <Step title="Install the executable and documentation">
 
   ```sh
-  make install
+  zig build install --prefix "$HOME/.local"
   ```
 
-  The default prefix is `~/.local`. The `PREFIX` make variable can override
-  that location when needed.
+  This explicitly selects `~/.local`. Plain `zig build` installs into
+  `zig-out` for local development. Use `--prefix` for another destination or
+  `DESTDIR` for a staged installation.
 
   </Step>
   <Step title="Put nbsp on PATH">

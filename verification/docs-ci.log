@@ -1,0 +1,194 @@
+
+> nobsprompt-docs@ docs:ci /Users/igorklepacki/Desktop/programming/nobsprompt/docs-website
+> node scripts/brand-assets.mjs --check && node scripts/video-assets.mjs --check && ASTRO_TELEMETRY_DISABLED=1 blume check --strict && blume validate --strict && ASTRO_TELEMETRY_DISABLED=1 blume build && blume audit --fail-on warning
+
+Brand assets match the canonical SVG source.
+Video assets match the canonical recording.
+(node:23457) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[blume] ◐ Type-checking 13 page(s)
+Result (14 files): 
+- 0 errors
+- 0 warnings
+- 0 hints
+
+[blume] ✔ No type errors.
+[blume] ✔ No broken links found.
+[blume] ◐ Building 13 page(s) (static output)
+(node:25574) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+17:37:29 [content] Syncing content
+17:37:29 [content] Synced content
+17:37:29 [types] Generated 158ms
+17:37:29 [build] output: "static"
+17:37:29 [build] mode: "static"
+17:37:29 [build] directory: /Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/dist/
+17:37:29 [build] Collecting build info...
+17:37:29 [build] ✓ Completed in 166ms.
+17:37:29 [build] Building static entrypoints...
+Could not fetch from `https://fonts.google.com/metadata/fonts`. Will retry in `1000ms`. `3` retries left.
+Could not fetch from `https://fonts.google.com/metadata/fonts`. Will retry in `1000ms`. `2` retries left.
+Could not fetch from `https://fonts.google.com/metadata/fonts`. Will retry in `1000ms`. `1` retries left.
+Could not initialize provider `google-c200761b0711fe56`. `unifont` will not be able to process fonts provided by this provider. FetchError: [GET] "https://fonts.google.com/metadata/fonts": <no response> fetch failed
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async $fetch2 (file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/ofetch@1.5.1/node_modules/ofetch/dist/shared/ofetch.CWycOUEr.mjs:332:15)
+    at async Object.getItem (file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/unifont@0.7.4/node_modules/unifont/dist/index.mjs:813:17)
+    at async file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/unifont@0.7.4/node_modules/unifont/dist/index.mjs:488:22
+    at async Object.init (file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/astro@7.1.3_@astrojs+markdown-remark@7.2.1_@emnapi+core@1.11.1_@emnapi+runtime@1.11.2_@_fd618d441ecf36dd5ec58d405497fd79/node_modules/astro/dist/assets/fonts/providers/index.js:79:29)
+    at async file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/astro@7.1.3_@astrojs+markdown-remark@7.2.1_@emnapi+core@1.11.1_@emnapi+runtime@1.11.2_@_fd618d441ecf36dd5ec58d405497fd79/node_modules/astro/dist/assets/fonts/infra/unifont-font-resolver.js:21:7
+    at async file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/unifont@0.7.4/node_modules/unifont/dist/index.mjs:863:32
+    at async Promise.all (index 0)
+    at async createUnifont (file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/unifont@0.7.4/node_modules/unifont/dist/index.mjs:860:2)
+    at async UnifontFontResolver.create (file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/astro@7.1.3_@astrojs+markdown-remark@7.2.1_@emnapi+core@1.11.1_@emnapi+runtime@1.11.2_@_fd618d441ecf36dd5ec58d405497fd79/node_modules/astro/dist/assets/fonts/infra/unifont-font-resolver.js:55:16) {
+  [cause]: [TypeError: fetch failed] {
+    [cause]: Error: getaddrinfo ENOTFOUND fonts.google.com
+        at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+      errno: -3008,
+      code: 'ENOTFOUND',
+      syscall: 'getaddrinfo',
+      hostname: 'fonts.google.com'
+    }
+  }
+}
+17:37:32 [WARN] [assets] No data found for font family Inter Tight. Review your configuration
+17:37:32 [WARN] [assets] No data found for font family Inter. Review your configuration
+17:37:32 [WARN] [assets] No data found for font family IBM Plex Mono. Review your configuration
+17:37:34 [assets] Copying fonts (0 files)...
+17:37:34 [vite] ✓ built in 4.46s
+Could not fetch from `https://fonts.google.com/metadata/fonts`. Will retry in `1000ms`. `3` retries left.
+Could not fetch from `https://fonts.google.com/metadata/fonts`. Will retry in `1000ms`. `2` retries left.
+Could not fetch from `https://fonts.google.com/metadata/fonts`. Will retry in `1000ms`. `1` retries left.
+Could not initialize provider `google-c200761b0711fe56`. `unifont` will not be able to process fonts provided by this provider. FetchError: [GET] "https://fonts.google.com/metadata/fonts": <no response> fetch failed
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async $fetch2 (file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/ofetch@1.5.1/node_modules/ofetch/dist/shared/ofetch.CWycOUEr.mjs:332:15)
+    at async Object.getItem (file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/unifont@0.7.4/node_modules/unifont/dist/index.mjs:813:17)
+    at async file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/unifont@0.7.4/node_modules/unifont/dist/index.mjs:488:22
+    at async Object.init (file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/astro@7.1.3_@astrojs+markdown-remark@7.2.1_@emnapi+core@1.11.1_@emnapi+runtime@1.11.2_@_fd618d441ecf36dd5ec58d405497fd79/node_modules/astro/dist/assets/fonts/providers/index.js:79:29)
+    at async file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/astro@7.1.3_@astrojs+markdown-remark@7.2.1_@emnapi+core@1.11.1_@emnapi+runtime@1.11.2_@_fd618d441ecf36dd5ec58d405497fd79/node_modules/astro/dist/assets/fonts/infra/unifont-font-resolver.js:21:7
+    at async file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/unifont@0.7.4/node_modules/unifont/dist/index.mjs:863:32
+    at async Promise.all (index 0)
+    at async createUnifont (file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/unifont@0.7.4/node_modules/unifont/dist/index.mjs:860:2)
+    at async UnifontFontResolver.create (file:///Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/node_modules/.pnpm/astro@7.1.3_@astrojs+markdown-remark@7.2.1_@emnapi+core@1.11.1_@emnapi+runtime@1.11.2_@_fd618d441ecf36dd5ec58d405497fd79/node_modules/astro/dist/assets/fonts/infra/unifont-font-resolver.js:55:16) {
+  [cause]: [TypeError: fetch failed] {
+    [cause]: Error: getaddrinfo ENOTFOUND fonts.google.com
+        at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+      errno: -3008,
+      code: 'ENOTFOUND',
+      syscall: 'getaddrinfo',
+      hostname: 'fonts.google.com'
+    }
+  }
+}
+17:37:37 [WARN] [assets] No data found for font family Inter Tight. Review your configuration
+17:37:37 [WARN] [assets] No data found for font family Inter. Review your configuration
+17:37:37 [WARN] [assets] No data found for font family IBM Plex Mono. Review your configuration
+17:37:37 [WARN] [vite] [plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+17:37:37 [vite] ✓ built in 3.30s
+17:37:37 [build] Rearranging server assets...
+
+ generating static routes 
+17:37:37   ├─ /404.html (+7ms) 
+17:37:37   ├─ /blume-search.json (+1ms) 
+17:37:37   ├─ /custom-prompts/data-lifecycle/index.html (+1ms) 
+17:37:37   ├─ /custom-prompts/data-lifecycle.md/index.html (+0ms) 
+17:37:37   ├─ /custom-prompts/data-lifecycle.mdx/index.html (+0ms) 
+17:37:37   ├─ /custom-prompts/direct-data/index.html (+0ms) 
+17:37:37   ├─ /custom-prompts/direct-data.md/index.html (+0ms) 
+17:37:37   ├─ /custom-prompts/direct-data.mdx/index.html (+0ms) 
+17:37:37   ├─ /custom-prompts/recipes/index.html (+0ms) 
+17:37:37   ├─ /custom-prompts/recipes.md/index.html (+0ms) 
+17:37:37   ├─ /custom-prompts/recipes.mdx/index.html (+0ms) 
+17:37:37   ├─ /custom-prompts/index.html (+0ms) 
+17:37:37   ├─ /custom-prompts.md/index.html (+0ms) 
+17:37:37   ├─ /custom-prompts.mdx/index.html (+0ms) 
+17:37:37   ├─ /og/index.png (+19ms) 
+17:37:37   ├─ /og/detached-mode.png (+6ms) 
+17:37:37   ├─ /og/detached-mode/data-lifecycle.png (+6ms) 
+17:37:37   ├─ /og/detached-mode/recipes.png (+5ms) 
+17:37:37   ├─ /og/get-started.png (+5ms) 
+17:37:37   ├─ /og/get-started/opinionated-prompt.png (+5ms) 
+17:37:37   ├─ /og/internals.png (+5ms) 
+17:37:37   ├─ /og/internals/performance.png (+6ms) 
+17:37:37   ├─ /og/reference/autosuggestions.png (+5ms) 
+17:37:37   ├─ /og/reference/cli.png (+5ms) 
+17:37:37   ├─ /og/reference/configuration.png (+5ms) 
+17:37:37   ├─ /og/reference/data-protocol.png (+5ms) 
+17:37:37   ├─ /og/reference/external-editor.png (+6ms) 
+17:37:37   ├─ /index.md (+0ms) 
+17:37:37   ├─ /detached-mode.md (+0ms) 
+17:37:37   ├─ /detached-mode/data-lifecycle.md (+0ms) 
+17:37:37   ├─ /detached-mode/recipes.md (+0ms) 
+17:37:37   ├─ /get-started.md (+0ms) 
+17:37:37   ├─ /get-started/opinionated-prompt.md (+0ms) 
+17:37:37   ├─ /internals.md (+0ms) 
+17:37:37   ├─ /internals/performance.md (+0ms) 
+17:37:37   ├─ /reference/autosuggestions.md (+0ms) 
+17:37:37   ├─ /reference/cli.md (+0ms) 
+17:37:37   ├─ /reference/configuration.md (+0ms) 
+17:37:37   ├─ /reference/data-protocol.md (+0ms) 
+17:37:37   ├─ /reference/external-editor.md (+0ms) 
+17:37:37   ├─ /index.mdx (+0ms) 
+17:37:37   ├─ /detached-mode.mdx (+0ms) 
+17:37:37   ├─ /detached-mode/data-lifecycle.mdx (+0ms) 
+17:37:37   ├─ /detached-mode/recipes.mdx (+0ms) 
+17:37:37   ├─ /get-started.mdx (+0ms) 
+17:37:37   ├─ /get-started/opinionated-prompt.mdx (+0ms) 
+17:37:37   ├─ /internals.mdx (+0ms) 
+17:37:37   ├─ /internals/performance.mdx (+0ms) 
+17:37:37   ├─ /reference/autosuggestions.mdx (+0ms) 
+17:37:37   ├─ /reference/cli.mdx (+0ms) 
+17:37:37   ├─ /reference/configuration.mdx (+0ms) 
+17:37:37   ├─ /reference/data-protocol.mdx (+0ms) 
+17:37:37   ├─ /reference/external-editor.mdx (+0ms) 
+17:37:37   ├─ /index.html (+9ms) 
+17:37:37   ├─ /detached-mode/index.html (+3ms) 
+17:37:37   ├─ /detached-mode/data-lifecycle/index.html (+3ms) 
+17:37:37   ├─ /detached-mode/recipes/index.html (+3ms) 
+17:37:37   ├─ /get-started/index.html (+3ms) 
+17:37:37   ├─ /get-started/opinionated-prompt/index.html (+4ms) 
+17:37:37   ├─ /internals/index.html (+2ms) 
+17:37:37   ├─ /internals/performance/index.html (+2ms) 
+17:37:37   ├─ /reference/autosuggestions/index.html (+2ms) 
+17:37:37   ├─ /reference/cli/index.html (+2ms) 
+17:37:37   ├─ /reference/configuration/index.html (+1ms) 
+17:37:37   ├─ /reference/data-protocol/index.html (+3ms) 
+17:37:37   ├─ /reference/external-editor/index.html (+2ms) 
+17:37:37 ✓ Completed in 202ms.
+
+17:37:37 [build] ✓ Completed in 7.98s.
+17:37:37 [build] 14 page(s) built in 8.16s
+17:37:37 [build] Complete!
+[blume] ✔ Generated llms.txt and llms-full.txt
+[blume] ✔ Generated sitemap.xml
+[blume] ✔ Generated robots.txt
+[blume] ✔ Generated agent-readability.json
+[blume] ✔ Emitted redirect files for 12 redirect(s)
+
+ ╭───────────────────────────────────────────╮
+ │                                           │
+ │  Output     static                        │
+ │  Adapter    none                          │
+ │  Site       https://nobsprompt.pages.dev  │
+ │  Search     orama                         │
+ │  Redirects  12                            │
+ │  Sitemap    yes                           │
+ │  Robots     yes                           │
+ │  Agent JSON yes                           │
+ │  LLM files  yes                           │
+ │  Server features  none                    │
+ │                                           │
+ ╰───────────────────────────────────────────╯
+
+[blume] ✔ Built to /Users/igorklepacki/Desktop/programming/nobsprompt/docs-website/dist
+
+  [1mblume audit[0m  [2m14 pages · dist · offline[0m
+  1,064 audits · 0 errors · 0 warnings · 0 notes
+
+  [32m✔ No issues found.[0m
+
+  [2m⊘ external     skipped — pass --external (2 checks)[0m
+  [2m⊘ network      skipped — pass --url <origin> (9 checks)[0m

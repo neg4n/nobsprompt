@@ -70,7 +70,7 @@ nbsp_opinionated_prompt() {
     git+=']%f'
   fi
 
-  # Node version is parsed from NVM_BIN on the C side (no node process).
+  # Node version is parsed from NVM_BIN by the native backend (no node process).
   if [[ -n ${NBSP_DATA[node_version]-} ]]; then
     nbsp_prompt_quote "[node:${NBSP_DATA[node_version]}]"
     node=" %F{green}${REPLY}%f"

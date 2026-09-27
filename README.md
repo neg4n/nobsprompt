@@ -17,7 +17,7 @@ repository metadata, `NVM_BIN`, and a validated status cache.
 /U/i/D/p/nobsprompt [main +1 ~2 ?3 ^1] [node:22.14.0] [2.4s] [jobs:2] %
 ```
 
-`nbsp` is written in C, links no third-party libraries, requires no daemon or
+`nbsp` is written in Zig, links no third-party libraries, requires no daemon or
 special font, and uses a versioned cache for detailed Git status. Completed
 snapshots are published with atomic pathname replacement. Use the included
 opinionated prompt as-is, or keep the backend and build the prompt yourself.
@@ -27,16 +27,16 @@ the shortest route to a working prompt.
 
 ## Quick start
 
-Requirements: macOS, Zsh 5.8 or newer, a C11 compiler, Git 2.25+, Meson 1.1+,
-Ninja, Make, and Python 3.9 or newer. Expect is optional for normal builds; it
+Requirements: macOS 13+ (Apple Silicon or Intel), Zsh 5.8 or newer,
+Zig exactly 0.16.0, and Git 2.25+. Expect is optional for normal builds; it
 is required to run the four interactive PTY tests.
 
 ```sh
-git clone --depth 1 --filter=blob:none --sparse --no-tags https://github.com/neg4n/nobsprompt.git && cd nobsprompt && git sparse-checkout set src tools tests bench doc docs
+git clone --branch codex/zig-rewrite --depth 1 --filter=blob:none --sparse --no-tags https://github.com/neg4n/nobsprompt.git && cd nobsprompt && git sparse-checkout set src tests bench doc docs verification
 ```
 
 This skips the website project and videos. For the complete repository, use
-`git clone https://github.com/neg4n/nobsprompt.git && cd nobsprompt` instead.
+`git clone --branch codex/zig-rewrite https://github.com/neg4n/nobsprompt.git && cd nobsprompt` instead.
 
 Before building, review the exact commit you checked out. The
 [installation guide](https://nobsprompt.pages.dev/get-started) provides a
@@ -44,11 +44,11 @@ copyable, evidence-focused audit prompt for an AI coding agent. AI review can
 improve visibility, but it cannot prove that software is safe.
 
 ```sh
-make install
+zig build install --prefix "$HOME/.local"
 ```
 
 This installs the executable, man page, and MDX documentation sources under
-`~/.local`. The `PREFIX` make variable can override that location when needed.
+`~/.local`. Use `--prefix` to select another location; `DESTDIR` supports staged installs.
 
 Put the executable on `PATH`, then choose one integration in `~/.zshrc`:
 
@@ -245,8 +245,8 @@ Generate a report for a specific binary and working directory rather than
 relying on an unversioned result:
 
 ```sh
-zsh bench/benchmark.zsh --output data.report ./build/nbsp data
-zsh bench/benchmark.zsh --output dirs.report ./build/nbsp dirs
+zsh bench/benchmark.zsh --output data.report ./zig-out/bin/nbsp data
+zsh bench/benchmark.zsh --output dirs.report ./zig-out/bin/nbsp dirs
 ```
 
 [Performance and memory](https://nobsprompt.pages.dev/internals/performance)
@@ -259,16 +259,23 @@ size result is claimed here without its raw report and build provenance.
 
 ## Development
 
-For the C project:
+For the native Zig project:
 
 ```sh
-meson setup build --buildtype=debug
-meson compile -C build
-meson test -C build --print-errorlogs
+zig build
+zig build test -Doptimize=Debug -Dzsh_tests=enabled
+zig build check
+zig build memory-check
 ```
 
+The default build is ReleaseSafe with runtime checks and a baseline CPU target.
+Debug, ReleaseFast, and ReleaseSmall are available through `-Doptimize`.
+Zig is pre-1.0; compiler upgrades require a complete compatibility run.
+Native builds have no third-party package dependencies and do not require
+Make, Meson, Ninja, or Python.
+
 With Expect installed, the default `zsh_tests=auto` setup registers four PTY
-tests. Use `-Dzsh_tests=enabled` to require Expect and fail configuration when
+tests. Use `-Dzsh_tests=enabled` to require Expect and fail build configuration when
 it is missing, or `-Dzsh_tests=disabled` to omit those four tests explicitly.
 
 The documentation content lives in `docs/`. The separate Blume project lives

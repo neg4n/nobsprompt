@@ -1,0 +1,4 @@
+allocations=15
+successful_resizes=10
+requested_bytes=9293
+peak_live_requested_bytes=4186

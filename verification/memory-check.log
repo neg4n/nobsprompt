@@ -1,0 +1,91 @@
+ZSH-OPTION-ISOLATION-PASS
+ZSH-DATA-PROTOCOL-PASS
+PROCESS-REGRESSIONS-PASS
+nbsp: --autosuggest disabled because another autosuggestion plugin is active; use only one engine or remove --autosuggest
+ZSH-QUOTE-PARITY-PASS
+Build Summary: 16/16 steps succeeded; 21/21 tests passed
+test success
++- run test 21 pass (21 total) 410ms MaxRSS:6M
+|  +- compile test Debug native-macos.13.0 cached 28ms MaxRSS:35M
++- run sh success 3s
+|  +- compile exe nbsp Debug native-macos.13.0 cached 27ms MaxRSS:35M
++- run sh success 428ms
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run zsh success 3ms
++- run zsh success 2ms
++- run zsh success 3ms
++- run zsh success 221ms
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run zsh success 273ms
++- run zsh success 10ms
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run /usr/bin/expect success 1m
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run /usr/bin/expect success 12s
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run /usr/bin/expect success 14s
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run /usr/bin/expect success 14s
+   +- compile exe nbsp Debug native-macos.13.0 (reused)
+
+ZSH-OPTION-ISOLATION-PASS
+nbsp: --autosuggest disabled because another autosuggestion plugin is active; use only one engine or remove --autosuggest
+ZSH-DATA-PROTOCOL-PASS
+ZSH-QUOTE-PARITY-PASS
+PROCESS-REGRESSIONS-PASS
+Build Summary: 16/16 steps succeeded; 22/22 tests passed
+test success
++- run test 22 pass (22 total) 306ms MaxRSS:9M
+|  +- compile test ReleaseSafe native-macos.13.0 cached 26ms MaxRSS:35M
++- run sh success 2s
+|  +- compile exe nbsp ReleaseSafe native-macos.13.0 cached 20ms MaxRSS:35M
++- run sh success 488ms
+|  +- compile exe nbsp ReleaseSafe native-macos.13.0 (reused)
++- run zsh success 6ms
++- run zsh success 3ms
++- run zsh success 3ms
++- run zsh success 298ms
+|  +- compile exe nbsp ReleaseSafe native-macos.13.0 (reused)
++- run zsh success 152ms
++- run zsh success 25ms
+|  +- compile exe nbsp ReleaseSafe native-macos.13.0 (reused)
++- run /usr/bin/expect success 1m
+|  +- compile exe nbsp ReleaseSafe native-macos.13.0 (reused)
++- run /usr/bin/expect success 11s
+|  +- compile exe nbsp ReleaseSafe native-macos.13.0 (reused)
++- run /usr/bin/expect success 14s
+|  +- compile exe nbsp ReleaseSafe native-macos.13.0 (reused)
++- run /usr/bin/expect success 14s
+   +- compile exe nbsp ReleaseSafe native-macos.13.0 (reused)
+
+ZSH-OPTION-ISOLATION-PASS
+PROCESS-REGRESSIONS-PASS
+ZSH-QUOTE-PARITY-PASS
+ZSH-DATA-PROTOCOL-PASS
+nbsp: --autosuggest disabled because another autosuggestion plugin is active; use only one engine or remove --autosuggest
+Build Summary: 16/16 steps succeeded; 22/22 tests passed
+test success
++- run test 22 pass (22 total) 520ms MaxRSS:6M
+|  +- compile test Debug native-macos.13.0 cached 30ms MaxRSS:36M
++- run sh success 3s
+|  +- compile exe nbsp Debug native-macos.13.0 success 904ms MaxRSS:277M
++- run sh success 659ms
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run zsh success 6ms
++- run zsh success 3ms
++- run zsh success 8ms
++- run zsh success 242ms
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run zsh success 163ms
++- run zsh success 19ms
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run /usr/bin/expect success 1m
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run /usr/bin/expect success 12s
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run /usr/bin/expect success 14s
+|  +- compile exe nbsp Debug native-macos.13.0 (reused)
++- run /usr/bin/expect success 14s
+   +- compile exe nbsp Debug native-macos.13.0 (reused)
+
+MEMORY-CHECK-PASS (runtime checks, allocation-failure tests, Darwin heap diagnostics, deterministic mutations)

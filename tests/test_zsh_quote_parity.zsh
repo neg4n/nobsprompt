@@ -1,7 +1,7 @@
 emulate -L zsh
 
-# Compare a few goldens against the C unit tests for nbsp_prompt_quote.
-# Production quoting is this Zsh function; C remains a pure oracle.
+# Check quoting against the established protocol goldens.
+# Production quoting remains the canonical embedded Zsh function.
 
 if (( $# != 1 )); then
   print -u2 -- 'usage: test_zsh_quote_parity.zsh /absolute/path/to/nbsp'
@@ -17,7 +17,7 @@ fail() {
 
 eval "$("$nbsp" init zsh --detached)" || fail 'init failed'
 
-# Same payload as tests/test_unit.c: "100% $(x) `y` ! \\\033\n"
+# Same payload as the original C test fixtures: "100% $(x) `y` ! \\\033\n"
 typeset -g _nbsp_quote_sample=$'100% $(x) `y` ! \x5c\033\n'
 
 unsetopt PROMPT_PERCENT PROMPT_SUBST PROMPT_BANG

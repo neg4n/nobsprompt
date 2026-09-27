@@ -57,25 +57,14 @@ cmp -s "$zsh_opinionated_source" "$docs_opinionated" || {
   exit 1
 }
 # Docs page code fence must match the canonical template byte-for-byte.
-python3 - "$zsh_opinionated_source" "$repo_root/docs/get-started/opinionated-prompt.mdx" <<'PY' || exit 1
-import sys
-from pathlib import Path
-src = Path(sys.argv[1]).read_text()
-mdx = Path(sys.argv[2]).read_text()
-start = mdx.find("```zsh\n# Opinionated one-line prompt")
-if start < 0:
-    print("opinionated-prompt.mdx missing template fence", file=sys.stderr)
-    sys.exit(1)
-start = mdx.find("\n", start) + 1  # after ```zsh\n
-end = mdx.find("\n```", start)
-if end < 0:
-    print("opinionated-prompt.mdx template fence not closed", file=sys.stderr)
-    sys.exit(1)
-body = mdx[start:end] + "\n"
-if body != src:
-    print("opinionated-prompt.mdx template fence differs from src/nbsp_opinionated.zsh", file=sys.stderr)
-    sys.exit(1)
-PY
+awk '
+  /^```zsh$/ { fence = 1; next }
+  fence && /^# Opinionated one-line prompt/ { capture = 1; fence = 0 }
+  capture && /^```$/ { done = 1; exit }
+  capture { print }
+  END { if (!done) exit 1 }
+' "$repo_root/docs/get-started/opinionated-prompt.mdx" > "$tmp/docs-template.zsh"
+cmp "$zsh_opinionated_source" "$tmp/docs-template.zsh"
 "$nbsp" init zsh --detached > "$tmp/nbsp_zsh_detached.zsh"
 test "$(sed -n '1p' "$tmp/nbsp_zsh_detached.zsh")" = 'typeset -g _NBSP_INIT_MODE=detached'
 grep -q '^typeset -g _NBSP_BIN=' "$tmp/nbsp_zsh_detached.zsh"

@@ -1,4 +1,4 @@
-.TH NBSP 1 "July 29, 2026" "nbsp 0.2.0" "User Commands"
+.TH NBSP 1 "September 27, 2026" "nbsp 0.2.0" "User Commands"
 .SH NAME
 nbsp \- a native prompt backend and opinionated Zsh prompt
 .SH SYNOPSIS
@@ -52,7 +52,7 @@ nbsp \- a native prompt backend and opinionated Zsh prompt
 .B nbsp cache clear
 .SH DESCRIPTION
 .B nbsp
-collects prompt data for macOS and Zsh without spawning Git or Node on the
+collects prompt data for macOS 13+ and Zsh without spawning Git or Node on the
 foreground rendering path. That path still reads the current directory,
 repository metadata, the
 .B NVM_BIN
@@ -373,3 +373,10 @@ rather than returning 1. Optional missing prompt context, such as an absent or
 invalid status cache, does not by itself prevent prompt rendering.
 .SH AUTHOR
 Igor Klepacki <neg4n@icloud.com>
+
+.SH BUILDING
+The native executable requires exactly Zig 0.16.0. Apple Silicon and Intel
+macOS targets are supported. The default build uses ReleaseSafe, retaining
+runtime checks. Run zig build for a local zig-out install, or
+zig build install --prefix "$HOME/.local" for a user install.
+Run zig build test -Dzsh_tests=enabled and zig build memory-check for verification.

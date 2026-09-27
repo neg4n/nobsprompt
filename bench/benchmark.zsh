@@ -70,11 +70,11 @@ write_text_field() {
 }
 
 sha256_file() {
-  local path=$1 digest_line digest
+  local input_file=$1 digest_line digest
   if (( $+commands[sha256sum] )); then
-    digest_line=$(command sha256sum "$path") || return 1
+    digest_line=$(command sha256sum "$input_file") || return 1
   elif (( $+commands[shasum] )); then
-    digest_line=$(command shasum -a 256 "$path") || return 1
+    digest_line=$(command shasum -a 256 "$input_file") || return 1
   else
     return 1
   fi

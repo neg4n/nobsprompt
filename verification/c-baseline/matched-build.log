@@ -1,0 +1,55 @@
+The Meson build system
+Version: 1.11.2
+Source dir: /private/tmp/nbsp-c-reference.z1r2WY
+Build dir: /Users/igorklepacki/Desktop/programming/nobsprompt/build-zig-reference-matched
+Build type: native build
+Project name: nobsprompt
+Project version: 0.2.0
+C compiler for the host machine: cc (clang 21.0.0 "Apple clang version 21.0.0 (clang-2100.1.1.101)")
+C linker for the host machine: cc ld64 1267
+Host machine cpu family: aarch64
+Host machine cpu: aarch64
+Compiler for C supports arguments -Wpedantic: YES 
+Compiler for C supports arguments -Werror=implicit-function-declaration: YES 
+Compiler for C supports arguments -Wshadow: YES 
+Compiler for C supports arguments -Wconversion: YES 
+Compiler for C supports arguments -Wstrict-prototypes: YES 
+Compiler for C supports arguments -fvisibility=hidden: YES 
+Compiler for C supports link arguments -Wl,-dead_strip: YES 
+Program python3 found: YES 3.14.6 3.14.6 (/opt/homebrew/bin/python3)
+Program sh found: YES (/bin/sh)
+Program zsh found: YES (/bin/zsh)
+Program expect skipped: feature zsh_tests disabled
+Build targets in project: 7
+
+nobsprompt 0.2.0
+
+  User defined options
+    b_lto      : true
+    buildtype  : release
+    c_args     : -mmacosx-version-min=13.0 -mcpu=generic
+    c_link_args: -mmacosx-version-min=13.0
+    zsh_tests  : disabled
+
+Found ninja-1.13.2 at /opt/homebrew/bin/ninja
+ninja: Entering directory `/Users/igorklepacki/Desktop/programming/nobsprompt/build-zig-reference-matched'
+[1/18] Generating nbsp-zsh-opinionated-source with a custom command
+[2/18] Generating nbsp-zsh-source with a custom command
+[3/18] Generating nbsp-zsh-autosuggest-source with a custom command
+[4/18] Compiling C object libnbsp-core.a.p/src_nbsp_refresh.c.o
+[5/18] Compiling C object libnbsp-core.a.p/src_nbsp_prompt.c.o
+[6/18] Compiling C object libnbsp-core.a.p/src_nbsp_data.c.o
+[7/18] Compiling C object libnbsp-core.a.p/src_nbsp_dirs.c.o
+[8/18] Compiling C object nbsp.p/src_main.c.o
+[9/18] Compiling C object libnbsp-core.a.p/meson-generated_.._nbsp_zsh.c.o
+[10/18] Compiling C object libnbsp-core.a.p/meson-generated_.._nbsp_opinionated.c.o
+[11/18] Compiling C object libnbsp-core.a.p/src_nbsp_util.c.o
+[12/18] Compiling C object libnbsp-core.a.p/meson-generated_.._nbsp_autosuggest.c.o
+[13/18] Compiling C object tests/test-unit.p/test_unit.c.o
+[14/18] Compiling C object libnbsp-core.a.p/src_nbsp_cache.c.o
+[15/18] Compiling C object libnbsp-core.a.p/src_nbsp_git.c.o
+[16/18] Linking static target libnbsp-core.a
+[17/18] Linking target nbsp
+[18/18] Linking target tests/test-unit
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /opt/homebrew/bin/ninja -C /Users/igorklepacki/Desktop/programming/nobsprompt/build-zig-reference-matched

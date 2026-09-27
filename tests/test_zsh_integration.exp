@@ -192,7 +192,7 @@ send -- "\r"
 wait_prompt
 send -- {for i in {1..200}; do print -r -- OUT-$i; print -ru2 -- ERR-$i; sleep 0.002; done; print -r -- STREAM-DONE}
 send -- "\r"
-expect -re {STREAM-DONE\r?\n}
+expect -re {(^|\r\n)STREAM-DONE\r?\n}
 set stream_data $expect_out(buffer)
 set stdout_count [regexp -all -line {^OUT-[0-9]+\r?$} $stream_data]
 set stderr_count [regexp -all -line {^ERR-[0-9]+\r?$} $stream_data]
@@ -207,7 +207,7 @@ send -- "\r"
 wait_prompt
 send -- {for i in {1..100}; do printf '\rPROGRESS-%03d' $i >&2; sleep 0.002; done; print -u2; print -r -- PROGRESS-DONE}
 send -- "\r"
-expect -re {PROGRESS-DONE\r?\n}
+expect -re {(^|\r\n)PROGRESS-DONE\r?\n}
 set progress_data $expect_out(buffer)
 set progress_count [regexp -all {PROGRESS-[0-9][0-9][0-9]} $progress_data]
 if {$progress_count != 100} {

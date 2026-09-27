@@ -1,4 +1,4 @@
-# Meson build directories and metadata
+# Retained comparison builds and generated build directories
 /build/
 /build*/
 /_build/
@@ -8,7 +8,7 @@
 /meson-private/
 /compile_commands.json
 
-# C build, coverage, and profiling artifacts
+# Object, library, coverage, and profiling artifacts
 *.o
 *.a
 *.dylib
@@ -24,3 +24,7 @@
 *.swp
 .DS_Store
 .cache/
+
+# Zig build products
+/.zig-cache/
+/zig-out/
