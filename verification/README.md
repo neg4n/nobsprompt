@@ -62,6 +62,19 @@ normalization is needed. It verifies C→Zig and Zig→C cache compatibility.
 Embedded shell output is compared with the canonical sources separately, since
 executable paths and the language-specific comment necessarily differ.
 
+## Raw evidence
+
+All raw measurements, including exploratory runs, are retained byte for byte in
+[raw-measurements.tar.gz](raw-measurements.tar.gz). Extract them from the repository
+root when inspecting individual format-2 reports:
+
+```sh
+tar -xzf verification/raw-measurements.tar.gz -C verification
+```
+
+The extracted directories are ignored. Logs, source checksums and RESULTS.md
+remain directly reviewable. `release-arm64/` contains final acceptance reports.
+
 ## Matched measurements
 
 ```sh

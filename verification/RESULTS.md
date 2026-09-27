@@ -8,7 +8,7 @@ from these machine-local measurements.
 Three interleaved matched runs per workload, 100 warmups and 1,000 samples
 per run. Each table statistic is the arithmetic mean of its three per-run
 statistics. Raw reports and five memory samples per binary are retained in
-[release-arm64/](release-arm64/). Positive deltas mean growth.
+`release-arm64/` within [raw-measurements.tar.gz](raw-measurements.tar.gz). Positive deltas mean growth.
 
 | Workload | C mean ms | Zig mean ms | Mean delta | p50 delta | p95 delta | RSS growth | Footprint growth |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

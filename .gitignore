@@ -28,3 +28,12 @@
 # Zig build products
 /.zig-cache/
 /zig-out/
+
+# Extracted verification measurements (retained in raw-measurements.tar.gz)
+/verification/c-baseline/
+/verification/zig/
+/verification/matched/
+/verification/final-matched/
+/verification/acceptance-arm64/
+/verification/release-arm64/
+/verification/zig-memory.txt
