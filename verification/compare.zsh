@@ -8,6 +8,10 @@ fi
 typeset reference=${1:A} rewrite=${2:A} output=${3:A}
 typeset root=${0:A:h:h} iterations=${4:-1000}
 typeset zig_arch=$(uname -m) c_cpu_flags='-march=x86-64 -mtune=generic'
+typeset c_compiler=$(clang --version | head -n 1)
+typeset c_linker=$(ld -v 2>&1 | head -n 1)
+typeset source_dirty=0
+[[ -n $(git -C "$root" status --porcelain --untracked-files=no) ]] && source_dirty=1
 if [[ $zig_arch == arm64 ]]; then zig_arch=aarch64; c_cpu_flags=-mcpu=generic; fi
 typeset tmp=$(mktemp -d /private/tmp/nbsp-matched.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
@@ -63,9 +67,9 @@ for name in plain nested valid missing invalid detached worktree dirs; do
       if [[ $implementation == c ]]; then
         binary=$reference
         export NBSP_BENCH_SOURCE_REVISION=56db8ce9cce0ea50345d66288c76dfca30f67f47 NBSP_BENCH_SOURCE_DIRTY=0
-        export NBSP_BENCH_COMPILER='Apple clang 21.0.0' NBSP_BENCH_BUILD_TYPE=release NBSP_BENCH_CFLAGS="-O3 -flto -mmacosx-version-min=13.0 $c_cpu_flags" NBSP_BENCH_LDFLAGS='Apple ld 1267.0, -flto -dead_strip -mmacosx-version-min=13.0'
+        export NBSP_BENCH_COMPILER=$c_compiler NBSP_BENCH_BUILD_TYPE=release NBSP_BENCH_CFLAGS="-O3 -flto -mmacosx-version-min=13.0 $c_cpu_flags" NBSP_BENCH_LDFLAGS="$c_linker, -flto -dead_strip -mmacosx-version-min=13.0"
       else
-        export NBSP_BENCH_SOURCE_REVISION=$(/usr/bin/git -C "$root" rev-parse HEAD) NBSP_BENCH_SOURCE_DIRTY=1
+        export NBSP_BENCH_SOURCE_REVISION=$(/usr/bin/git -C "$root" rev-parse HEAD) NBSP_BENCH_SOURCE_DIRTY=$source_dirty
         export NBSP_BENCH_COMPILER='Zig 0.16.0' NBSP_BENCH_BUILD_TYPE=ReleaseSafe NBSP_BENCH_CFLAGS="-OReleaseSafe -target $zig_arch-macos.13.0 -mcpu=baseline -fsingle-threaded" NBSP_BENCH_LDFLAGS='LLVM codegen, Zig Mach-O linker, macOS system libc'
       fi
       zsh "$root/bench/benchmark.zsh" --iterations "$iterations" --warmup 100 --cwd "$cwd" --output "$output/$name-$repeat-$implementation.report" -- "$binary" "$mode"

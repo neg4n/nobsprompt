@@ -1,0 +1,63 @@
+name: Native Intel acceptance
+on:
+  push:
+    branches: [codex/zig-rewrite]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  intel:
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Install pinned Zig and comparison tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          curl --fail --location --retry 3 https://ziglang.org/download/0.16.0/zig-x86_64-macos-0.16.0.tar.xz -o "$RUNNER_TEMP/zig.tar.xz"
+          echo "0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7  $RUNNER_TEMP/zig.tar.xz" | shasum -a 256 -c -
+          tar -xf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-x86_64-macos-0.16.0" >> "$GITHUB_PATH"
+          brew install meson ninja expect
+      - name: Native tests and allocation diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p acceptance
+          { uname -a; sw_vers; sysctl machdep.cpu.brand_string; zig version; clang --version; ld -v; } > acceptance/provenance.txt 2>&1
+          zig build check
+          zig build memory-check 2>&1 | tee acceptance/memory-check.log
+          zig build
+          zig build measurement-tools
+          DESTDIR="$RUNNER_TEMP/stage" zig build install --prefix /usr/local
+          "$RUNNER_TEMP/stage/usr/local/bin/nbsp" --version
+          cmp src/nbsp_opinionated.zsh "$RUNNER_TEMP/stage/usr/local/share/doc/nobsprompt/get-started/opinionated-prompt.zsh"
+      - name: Frozen C comparison and matched measurements
+        shell: bash
+        run: |
+          set -euo pipefail
+          reference_source="$RUNNER_TEMP/c-reference"
+          mkdir -p "$reference_source"
+          git archive 56db8ce9cce0ea50345d66288c76dfca30f67f47 src tests tools doc docs meson.build meson_options.txt LICENSE README.md | tar -x -C "$reference_source"
+          meson setup "$RUNNER_TEMP/c-build" "$reference_source" --buildtype=release -Db_lto=true -Dzsh_tests=disabled -Dc_args='-mmacosx-version-min=13.0 -march=x86-64 -mtune=generic' -Dc_link_args='-mmacosx-version-min=13.0'
+          meson compile -C "$RUNNER_TEMP/c-build"
+          sh tests/differential.sh "$RUNNER_TEMP/c-build/nbsp" zig-out/bin/nbsp 2>&1 | tee acceptance/differential.log
+          zsh verification/compare.zsh "$RUNNER_TEMP/c-build/nbsp" zig-out/bin/nbsp acceptance/measurements 1000 > acceptance/benchmark.log
+          cp "$RUNNER_TEMP/c-build/nbsp" acceptance/c-stripped
+          cp zig-out/bin/nbsp acceptance/zig-stripped
+          strip -x acceptance/c-stripped acceptance/zig-stripped
+          wc -c acceptance/*-stripped > acceptance/sizes.txt
+          shasum -a 256 zig-out/bin/nbsp > acceptance/binary.sha256
+          zsh verification/check-results.zsh acceptance/measurements | tee acceptance/gates.txt
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: native-intel-acceptance
+          path: acceptance/
+          if-no-files-found: error
