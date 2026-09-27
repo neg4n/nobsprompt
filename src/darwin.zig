@@ -1,6 +1,12 @@
 const std = @import("std");
 const u = @import("util.zig");
 pub const c = std.c;
+// Intel retains both directory ABIs. std.c.readdir selects INODE64, so
+// directory handles must be opened through the matching entry points.
+extern "c" fn @"opendir$INODE64"([*:0]const u8) ?*c.DIR;
+extern "c" fn @"fdopendir$INODE64"(c_int) ?*c.DIR;
+pub const opendir = if (@import("builtin").cpu.arch == .x86_64) @"opendir$INODE64" else c.opendir;
+pub const fdopendir = if (@import("builtin").cpu.arch == .x86_64) @"fdopendir$INODE64" else c.fdopendir;
 pub fn errno() c.E {
     return @enumFromInt(c._errno().*);
 }

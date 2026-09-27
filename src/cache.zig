@@ -294,7 +294,7 @@ pub fn clear(a: u.Allocator, environ: std.process.Environ) u.Error!void {
     defer if (unlink_open) {
         _ = c.close(unlink_fd);
     };
-    const handle = c.fdopendir(dir) orelse {
+    const handle = os.fdopendir(dir) orelse {
         _ = c.close(dir);
         return error.Io;
     };

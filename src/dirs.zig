@@ -9,7 +9,7 @@ fn less(_: void, left: [:0]u8, right: [:0]u8) bool {
     return std.mem.order(u8, left, right) == .lt;
 }
 pub fn collect(a: u.Allocator, cwd: [:0]const u8) u.Error!std.ArrayList([:0]u8) {
-    const dir = c.opendir(cwd) orelse return error.Io;
+    const dir = os.opendir(cwd) orelse return error.Io;
     var dir_open = true;
     defer if (dir_open) {
         _ = c.closedir(dir);
